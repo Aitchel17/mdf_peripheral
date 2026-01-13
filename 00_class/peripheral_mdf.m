@@ -21,6 +21,16 @@ classdef peripheral_mdf < mdfExtractLoader
             end
             obj@mdfExtractLoader(args{:});
 
+            % Create 'peripheral' directory within mdfExtract folder
+            if isfield(obj.dir_struct, 'mdfExtract')
+                peripheral_dir = fullfile(obj.dir_struct.mdfExtract, 'peripheral');
+                if ~isfolder(peripheral_dir)
+                    mkdir(peripheral_dir);
+                    fprintf('Created directory: %s\n', peripheral_dir);
+                end
+                obj.dir_struct.peripheral = peripheral_dir;
+            end
+
             % info is already available as obj.info from superclass
         end
 
