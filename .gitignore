@@ -1,0 +1,9 @@
+# MATLAB autosave
+*.asv
+
+# Large data / outputs
+*.mat
+*.tif
+
+# Generated/Temp files
+*.log
