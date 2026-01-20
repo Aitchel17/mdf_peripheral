@@ -22,16 +22,13 @@ classdef peripheral_mdf < mdfExtractLoader
             obj@mdfExtractLoader(args{:});
 
             % Create 'peripheral' directory within mdfExtract folder
-            if isfield(obj.dir_struct, 'mdfExtract')
-                peripheral_dir = fullfile(obj.dir_struct.mdfExtract, 'peripheral');
-                if ~isfolder(peripheral_dir)
-                    mkdir(peripheral_dir);
-                    fprintf('Created directory: %s\n', peripheral_dir);
-                end
-                obj.dir_struct.peripheral = peripheral_dir;
-            end
+            peripheral_dir = fullfile(mdfExtract_folderpath, 'peripheral');
 
-            % info is already available as obj.info from superclass
+            if ~isfolder(peripheral_dir)
+                mkdir(peripheral_dir);
+                fprintf('Created directory: %s\n', peripheral_dir);
+            end
+            obj.dir_struct.peripheral = peripheral_dir;
         end
 
         function obj = loadraw_analogdata(obj)
@@ -44,25 +41,14 @@ classdef peripheral_mdf < mdfExtractLoader
             end
         end
 
-        function obj = loadbehavior(obj)
+        function whisker = loadwhisker(obj)
             % Load eye and whisker videos using io_loadavi
             % Note: io_loadavi must be in the path
-
-            % Eye Video
-            if isfield(obj.dir_struct, 'eye') && ~isempty(obj.dir_struct.eye)
-                try
-                    fprintf('Loading Eye Video: %s\n', obj.dir_struct.eye);
-                    obj.eye = io_loadavi(obj.dir_struct.eye);
-                catch ME
-                    warning(ME.identifier, 'Failed to load Eye video: %s', ME.message);
-                end
-            end
-
             % Whisker Video
             if isfield(obj.dir_struct, 'whisker') && ~isempty(obj.dir_struct.whisker)
                 try
                     fprintf('Loading Whisker Video: %s\n', obj.dir_struct.whisker);
-                    obj.whisker = io_loadavi(obj.dir_struct.whisker);
+                    whisker = io_loadavi(obj.dir_struct.whisker);
                 catch ME
                     warning(ME.identifier, 'Failed to load Whisker video: %s', ME.message);
                 end

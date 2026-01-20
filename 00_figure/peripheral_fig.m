@@ -6,7 +6,6 @@ classdef peripheral_fig < handle
     properties
         fig
         ax
-
         % Figure settings
         fig_name
         monitor_xyinch = [5 5]; % Default position
@@ -18,27 +17,38 @@ classdef peripheral_fig < handle
     end
 
     methods
-        function obj = peripheral_fig(fig_name, position_rect)
+        function obj = peripheral_fig(fig_name, kwargs)
             %SLEEP_FIGURE Construct an instance of this class
             %   fig_name: char, Name of the figure
-            %   position_rect: [x y w h] in inches (optional)
+            %   kwargs.Parent: Axis handle (optional). If provided, plots into this axis.
+            %   kwargs.position_rect: [x y w h] in inches (optional, ignored if Parent is used)
 
             arguments
                 fig_name char
-                position_rect (1,4) double = [5 5 5 2]
+                kwargs.Parent = [] % Axis or UIAxes handle
+                kwargs.position_rect (1,4) double = [5 5 5 2]
             end
 
             obj.fig_name = fig_name;
-            if nargin > 1
-                obj.monitor_xyinch = position_rect(1:2);
-                obj.xy_sizeinch = position_rect(3:4);
+
+            if ~isempty(kwargs.Parent) && isgraphics(kwargs.Parent)
+                % Use existing axis
+                obj.ax = kwargs.Parent;
+                obj.fig = ancestor(obj.ax, 'figure');
+                % Do NOT change position of parent figure
+            else
+                % Create new figure
+                if isfield(kwargs, 'position_rect')
+                    obj.monitor_xyinch = kwargs.position_rect(1:2);
+                    obj.xy_sizeinch = kwargs.position_rect(3:4);
+                end
+
+                obj.fig = figure("Name", fig_name, "NumberTitle", "off");
+                set(obj.fig, 'Units', 'inches', ...
+                    "Position", [obj.monitor_xyinch(1) obj.monitor_xyinch(2) obj.xy_sizeinch(1) obj.xy_sizeinch(2)]);
+
+                obj.initialize_axis();
             end
-
-            obj.fig = figure("Name", fig_name, "NumberTitle", "off");
-            set(obj.fig, 'Units', 'inches', ...
-                "Position", [obj.monitor_xyinch(1) obj.monitor_xyinch(2) obj.xy_sizeinch(1) obj.xy_sizeinch(2)]);
-
-            obj.initialize_axis();
         end
 
         function initialize_axis(obj)
