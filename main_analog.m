@@ -1,24 +1,55 @@
-base_path = 'G:\tmp\00_igkl\hql090\251016_hql090_sleep\HQL090_sleep251016_002';
 %% 1. Load Data
+base_path = 'G:\tmp\00_igkl\hql090\251016_hql090_sleep\HQL090_sleep251016_002';
 peripheral_session = peripheral_mdf(base_path);
-peripheral_session = peripheral_session.loadraw_analogdata;
-% 2. Run Analysis
-primary_analog = run_analog_analysis(peripheral_session);
+%% 2. Run or load Analysis
+if exist(fullfile(peripheral_session.dir_struct.peripheral,"analysis_analog.mat"))
+    primary_analog = analysis_analog.load_object(peripheral_session.dir_struct.peripheral);
+else
+    peripheral_session = peripheral_session.loadraw_analogdata;
+    primary_analog = run_analog_analysis(peripheral_session);
+end
+%% 2.1 Load analog analysis
+primary_analog = analysis_analog.load_object(peripheral_session.dir_struct.peripheral);
+
 %% Initialize Figure Struct
 figStruct = struct();
-figStruct.emg = peripheral_fig('EMG');
+figStruct.emg_power = peripheral_fig('EMG');
 figStruct.rawemg = peripheral_fig('Low pass EMG');
 figStruct.rawECoG = peripheral_fig('rawECoG');
 figStruct.force = peripheral_fig('Force');
 figStruct.spectrogram = peripheral_fig('ecog_spectrum');
 figStruct.whisker = peripheral_fig('Whisker var');
+figStruct.pupil = peripheral_fig('Pupil_dlc');
+%%
+figStruct.emg_power.fig.Position = [30 7 8 3];
+%%
+figStruct.rawemg.fig.Position = [21 7 8 3];%[30 7 8 3]%[21 3.5 8 3];
+%%
+figStruct.rawECoG.fig.Position = [30 0.5 8 3];
+figStruct.rawECoG.fig.Visible = 'off';
+
+%%
+figStruct.spectrogram.fig.Position = [21 3.5 8 3];%[30 7 8 3];
+%%
+figStruct.force.fig.Position = [20 1 17 9];
+
+%%
+figStruct.whisker.fig.Position = [30 0.5 8 3];
+%%
+figStruct.pupil.fig.Position = [30 3.5 8 3];
+figStruct.pupil.fig.Visible = 'on';
+
+
+%% ECoG baseline measurement
+
+
 
 %% EMG power figure
 %%
-figStruct.emg.reset_axis
-figStruct.emg.plot_line(primary_analog.emg.resampled_power, Xaxis=primary_analog.emg.rs_taxis)
-ylabel(figStruct.emg.ax, 'EMG power')
-xlabel(figStruct.emg.ax, 'sec')
+figStruct.emg_power.reset_axis
+figStruct.emg_power.plot_line(primary_analog.emg.resampled_power, Xaxis=primary_analog.emg.rs_taxis)
+ylabel(figStruct.emg_power.ax, 'EMG power')
+xlabel(figStruct.emg_power.ax, 'sec')
 
 % Raw EMG figure
 figStruct.rawemg.reset_axis
@@ -31,14 +62,24 @@ figStruct.rawECoG.reset_axis
 figStruct.rawECoG.plot_line(primary_analog.ecog.resampled_ecog, Xaxis=primary_analog.emg.rs_taxis)
 ylabel(figStruct.rawECoG.ax, 'ECoG (\muV)')
 xlabel(figStruct.rawECoG.ax, 'Time (sec)')
+
 % Force Figure
 figStruct.force.reset_axis
 figStruct.force.plot_line(primary_analog.force.lowpass_force, Xaxis=primary_analog.force.rs_taxis)
 ylabel(figStruct.force.ax, 'Force (N)')
 xlabel(figStruct.force.ax, 'Time (sec)')
+
 % ECoG figure
 figStruct.spectrogram.reset_axis
 figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum)
+
+
+%% Save Analysis Object
+fprintf('Saving primary_analog object...\n');
+primary_analog.save_object(output_dir);
+
+%% save figure
+figStruct.spectrogram.save_plot;
 
 %% Behaviorcam processing
 camera_session = analysis_camera(peripheral_session);
@@ -55,8 +96,17 @@ figStruct.spectrogram.fig.Visible = 'off';
 figStruct.force.fig.Visible = 'off';
 figStruct.rawECoG.fig.Visible = 'off';
 figStruct.rawemg.fig.Visible = 'off';
-figStruct.emg.fig.Visible = 'on';
+figStruct.emg_power.fig.Visible = 'off';
 figStruct.whisker.fig.Visible = 'off';
+
+%%
+figStruct.spectrogram.fig.Visible = 'on';
+figStruct.force.fig.Visible = 'on';
+figStruct.rawECoG.fig.Visible = 'on';
+figStruct.rawemg.fig.Visible = 'on';
+figStruct.emg_power.fig.Visible = 'on';
+figStruct.whisker.fig.Visible = 'on';
+figStruct.pupil.fig.Visible = 'on';
 
 %% 99. Behavior data analysis
 session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
@@ -67,12 +117,19 @@ sleepscore.setup_control_panel();
 %%
 sleepscore.goto_bin(1);
 
+%% Save Figures to Peripheral Folder
+output_dir = peripheral_session.dir_struct.peripheral;
+fields = fieldnames(figStruct);
+fprintf('Saving figures to %s...\n', output_dir);
 
-%%
-% Setup Figure
-obj.setup_figure(figStruct);
-% Setup Control Panel
-obj.setup_control_panel();
-% Start Navigation
-obj.goto_bin(1);
+for i = 1:numel(fields)
+    fName = fields{i};
+    % Check if field is a valid peripheral_fig object
+    if ~isempty(figStruct.(fName)) && isa(figStruct.(fName), 'peripheral_fig')
+        figStruct.(fName).save_plot(output_dir);
+    end
+end
+disp('All figures saved.');
+
+
 

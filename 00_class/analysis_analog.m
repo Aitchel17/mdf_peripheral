@@ -152,6 +152,39 @@ classdef analysis_analog < handle
             obj.rawdata.(force_fieldname) = rescaledForce;
         end
 
+        function save_object(obj, save_folder)
+            %SAVE_OBJECT Save the analysis_analog object to a folder
+            arguments
+                obj
+                save_folder char
+            end
+            
+            if ~isfolder(save_folder)
+                mkdir(save_folder);
+            end
+            
+            % Save as analysis_analog.mat
+            save_path = fullfile(save_folder, 'analysis_analog.mat');
+            % Assign to a variable name for clarity in the MAT file
+            primary_analog = obj; 
+            save(save_path, 'primary_analog');
+            fprintf('analysis_analog object saved to: %s\n', save_path);
+        end
+    end
+
+    methods (Static)
+        function obj = load_object(load_folder)
+            %LOAD_OBJECT Load the analysis_analog object from a folder
+            try
+                load_path = fullfile(load_folder, 'analysis_analog.mat');
+                loaded_data = load(load_path, 'primary_analog');
+                obj = loaded_data.primary_analog;
+                fprintf('Loaded analysis_analog object from: %s\n', load_path);
+            catch ME
+                warning('Failed to load object: %s', ME.message);
+                obj = [];
+            end
+        end
     end
 
 end

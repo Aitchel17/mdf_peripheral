@@ -34,4 +34,9 @@ else
     fprintf('no raw_ECoG in primary_analog.data\n')
 end
 
+%%
+
+primary_analog.save_object(peripheral_session.dir_struct.peripheral)
+%%
+
 end

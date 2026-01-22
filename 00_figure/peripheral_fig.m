@@ -127,8 +127,8 @@ classdef peripheral_fig < handle
             view(obj.ax, 2);
         end
 
-        function save2svg(obj, save_folder)
-            %SAVE2SVG Save figure as SVG
+        function save_plot(obj, save_folder)
+            %SAVE_PLOT Save figure as SVG and FIG
             arguments
                 obj
                 save_folder char
@@ -138,9 +138,15 @@ classdef peripheral_fig < handle
                 mkdir(save_folder);
             end
 
-            filepath = fullfile(save_folder, [obj.fig_name '.svg']);
-            print(obj.fig, filepath, "-dsvg", "-vector");
-            fprintf('Figure saved to: %s\n', filepath);
+            fname = fullfile(save_folder, obj.fig_name);
+
+            % SVG
+            print(obj.fig, [fname '.svg'], "-dsvg", "-vector");
+            fprintf('Saved SVG: %s.svg\n', obj.fig_name);
+
+            % FIG
+            savefig(obj.fig, [fname '.fig']);
+            fprintf('Saved FIG: %s.fig\n', obj.fig_name);
         end
 
         function close(obj)
