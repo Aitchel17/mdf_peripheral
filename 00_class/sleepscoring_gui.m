@@ -13,8 +13,19 @@ classdef sleepscoring_gui < handle
     end
 
     properties (Access = private)
+        monitor_pos = [20 1 17 9];
         selector_is_open = false;
         PollTimer         % Timer for polling globals
+        % Colors
+        blue      = [0.00 0.45 0.90];
+        red       = [0.85 0.10 0.10];
+        black     = [0.10 0.10 0.10];
+        orange    = [0.93 0.49 0.19];
+        purple    = [0.50 0.10 0.70];
+        purpleBlu = [0.35 0.45 0.95];
+        green     = [0.20 0.65 0.20];
+        cyan      = [0.00 0.70 0.85];
+        white     = [1 1 1];
     end
 
     events
@@ -45,8 +56,8 @@ classdef sleepscoring_gui < handle
         function setup_figure(obj, figStruct)
             % Create main figure and layout axes
             obj.figHandle = figure('Name', 'Sleep Scoring GUI', ...
-                'Color', 'w', 'Units', 'normalized', ...
-                'Position', [0.1 0.1 0.6 0.8], ...
+                'Color', 'w', 'Units', 'inches', ...
+                'Position', obj.monitor_pos, ...
                 'KeyPressFcn', @obj.key_press_handler, ...
                 'CloseRequestFcn', @obj.close_request_handler);
 
@@ -70,7 +81,7 @@ classdef sleepscoring_gui < handle
             end
 
             obj.Axes.force   = copyAndPos(figStruct.force, 1);
-            obj.Axes.emg     = copyAndPos(figStruct.emg, 2);
+            obj.Axes.emg_power     = copyAndPos(figStruct.emg_power, 2);
             obj.Axes.rawemg  = copyAndPos(figStruct.rawemg, 3);
             obj.Axes.whisker = copyAndPos(figStruct.whisker, 4);
 
@@ -94,117 +105,89 @@ classdef sleepscoring_gui < handle
             end
 
             % Link axes
-            linkaxes([obj.Axes.force, obj.Axes.emg, obj.Axes.rawemg, ...
+            linkaxes([obj.Axes.force, obj.Axes.emg_power, obj.Axes.rawemg, ...
                 obj.Axes.whisker, obj.Axes.pupil, obj.Axes.spectrogram], 'x');
 
             % Scoring axes references
-            obj.Axes.scoring_emg = obj.Axes.emg;
+            obj.Axes.scoring_emg = obj.Axes.emg_power;
             obj.Axes.scoring_spec = obj.Axes.spectrogram;
         end
 
         function setup_control_panel(obj)
-            % Re-implement createControlPanel logic 1:1
-            % 3 rows, 3 columns (justified)
+            % Re-implement createControlPanel logic using uifigure/uigridlayout
+            % Style based on jake.m
 
-            % Geometry
-            pad   = 10;
-            btnW  = 150;
-            btnH  = 32;
-            vpad  = 10;
-            panelW = pad + 3*btnW + 2*pad + pad;
-            panelH = pad + 3*btnH + 2*vpad + pad;
+            % Window Size
+            WindowSize = [500, 300]; % [Width, Height] in pixels
 
-            % Calculate Position (Top-Right of Monitor)
-            mf   = get(obj.figHandle,'OuterPosition');
-            mons = get(groot,'MonitorPositions');
-            mfCenter = [mf(1)+mf(3)/2, mf(2)+mf(4)/2];
-            mIdx = 1;
-            for i = 1:size(mons,1)
-                m = mons(i,:);
-                if mfCenter(1) >= m(1) && mfCenter(1) <= m(1)+m(3) && ...
-                        mfCenter(2) >= m(2) && mfCenter(2) <= m(2)+m(4)
-                    mIdx = i; break;
-                end
+            % Determine Position (Top-Right of Main Figure)
+            if ~isempty(obj.figHandle) && isvalid(obj.figHandle)
+                % Get main figure position in pixels
+                currUnits = obj.figHandle.Units;
+                obj.figHandle.Units = 'pixels';
+                mainPos = obj.figHandle.Position; % [x y w h]
+                obj.figHandle.Units = currUnits;
+
+                % Calculate position (aligned to top-right with padding)
+                padding = 50;
+                LeftEdge = mainPos(1) + mainPos(3) - WindowSize(1) - padding;
+                BottomEdge = mainPos(2) + mainPos(4) - WindowSize(2) - padding;
+            else
+                % Fallback: Center on screen
+                ScreenSize = get(0, 'ScreenSize');
+                LeftEdge = (ScreenSize(3) - WindowSize(1)) / 2;
+                BottomEdge = (ScreenSize(4) - WindowSize(2)) / 2;
             end
-            m = mons(mIdx,:);
-            margin = 10;
-            topGap = 0.05;
-            newX = m(1) + m(3) - panelW - margin;
-            newY = m(2) + m(4)*(1 - topGap) - panelH;
 
-            obj.GUI.cpFig = figure('Name','Scoring Controls',...
-                'NumberTitle','off','MenuBar','none','ToolBar','none',...
-                'HandleVisibility','off','Color',[0.97 0.97 0.97],...
-                'Position',[newX newY panelW panelH],...
-                'Resize','off','WindowStyle','normal','DockControls','off',...
-                'CloseRequestFcn', @(~,~) obj.close_request_handler()); % closing this closes app
+            % Create UI Figure
+            obj.GUI.cpFig = uifigure('Name', 'Scoring Controls', ...
+                'Position', [LeftEdge, BottomEdge, WindowSize], ...
+                'Resize', 'on', ...
+                'CloseRequestFcn', @(~,~) obj.close_request_handler());
 
-            % Colors
-            blue      = [0.00 0.45 0.90];
-            red       = [0.85 0.10 0.10];
-            black     = [0.10 0.10 0.10];
-            orange    = [0.93 0.49 0.19];
-            purple    = [0.50 0.10 0.70];
-            purpleBlu = [0.35 0.45 0.95];
-            green     = [0.20 0.65 0.20];
-            cyan      = [0.00 0.70 0.85];
-            white     = [1 1 1];
+            % Main Layout: 3x3 Grid
+            MainLayout = uigridlayout(obj.GUI.cpFig, [3,3]);
+            MainLayout.RowHeight = {'1x', '1x', '1x'};
+            MainLayout.ColumnWidth = {'1x', '1x', '1x'};
 
-            % Grid Positions
-            col1 = pad; col2 = pad + btnW + pad; col3 = pad + 2*(btnW + pad);
-            row1 = panelH - pad - btnH;
-            row2 = row1 - (btnH + vpad);
-            row3 = row2 - (btnH + vpad);
+            % --- Buttons Configuration ---
+            % Flow: Top-Left -> Bottom-Right (Row by Row)
+            btnConfig = {
+                'Continue', obj.blue, 'continue';
+                'End here', obj.red, 'end';
+                'Finish window', obj.orange, 'finishwin';
+                'View remainder', obj.black, 'view';
+                'Bulk label (plot)', obj.green, 'bulk_plot';
+                'Bulk label (time)', obj.cyan, 'bulk_time';
+                'Jump in plot', obj.purple, 'jump_plot';
+                'Plot scores', obj.purpleBlu, 'plot_scores';
+                'Jump in time', obj.purpleBlu, 'jump_time';
+                };
 
-            % --- Buttons ---
-            % Row 1
-            uicontrol(obj.GUI.cpFig,'Style','pushbutton','String','Continue',...
-                'FontWeight','bold','ForegroundColor',white,'BackgroundColor',blue,...
-                'Position',[col1 row1 btnW btnH],...
-                'Callback',@(~,~)obj.panel_action('continue'));
+            for i = 1:size(btnConfig,1)
+                actionStr = btnConfig{i,3};
+                if strcmp(actionStr, 'plot_scores')
+                    cb = @(src,event)obj.plot_scores_overview();
+                else
+                    cb = @(src,event)obj.panel_action(actionStr);
+                end
 
-            uicontrol(obj.GUI.cpFig,'Style','pushbutton','String','End here',...
-                'FontWeight','bold','ForegroundColor',white,'BackgroundColor',red,...
-                'Position',[col2 row1 btnW btnH],...
-                'Callback',@(~,~)obj.panel_action('end'));
+                % Create Button
+                btn = uibutton(MainLayout, ...
+                    'Text', btnConfig{i,1}, ...
+                    'FontWeight', 'bold', ...
+                    'FontColor', obj.white, ...
+                    'BackgroundColor', btnConfig{i,2}, ...
+                    'ButtonPushedFcn', cb);
 
-            uicontrol(obj.GUI.cpFig,'Style','pushbutton','String','Finish window',...
-                'FontWeight','bold','ForegroundColor',white,'BackgroundColor',orange,...
-                'Position',[col3 row1 btnW btnH],...
-                'Callback',@(~,~)obj.panel_action('finishwin'));
-
-            % Row 2
-            uicontrol(obj.GUI.cpFig,'Style','pushbutton','String','View remainder',...
-                'FontWeight','bold','ForegroundColor',white,'BackgroundColor',black,...
-                'Position',[col1 row2 btnW btnH],...
-                'Callback',@(~,~)obj.panel_action('view'));
-
-            uicontrol(obj.GUI.cpFig,'Style','pushbutton','String','Bulk label (plot)',...
-                'FontWeight','bold','ForegroundColor',white,'BackgroundColor',green,...
-                'Position',[col2 row2 btnW btnH],...
-                'Callback',@(~,~)obj.panel_action('bulk_plot'));
-
-            uicontrol(obj.GUI.cpFig,'Style','pushbutton','String','Bulk label (time)',...
-                'FontWeight','bold','ForegroundColor',white,'BackgroundColor',cyan,...
-                'Position',[col3 row2 btnW btnH],...
-                'Callback',@(~,~)obj.panel_action('bulk_time'));
-
-            % Row 3
-            uicontrol(obj.GUI.cpFig,'Style','pushbutton','String','Jump in plot',...
-                'FontWeight','bold','ForegroundColor',white,'BackgroundColor',purple,...
-                'Position',[col1 row3 btnW btnH],...
-                'Callback',@(~,~)obj.panel_action('jump_plot'));
-
-            uicontrol(obj.GUI.cpFig,'Style','pushbutton','String','Plot scores',...
-                'FontWeight','bold','ForegroundColor',white,'BackgroundColor',[0.95 0.25 0.85],...
-                'Position',[col2 row3 btnW btnH],...
-                'Callback',@(~,~)obj.plot_scores_overview());
-
-            uicontrol(obj.GUI.cpFig,'Style','pushbutton','String','Jump in time',...
-                'FontWeight','bold','ForegroundColor',white,'BackgroundColor',purpleBlu,...
-                'Position',[col3 row3 btnW btnH],...
-                'Callback',@(~,~)obj.panel_action('jump_time'));
+                % Assign Grid Position (Row-Major)
+                rowIdx = ceil(i/3);
+                colIdx = mod(i-1, 3) + 1;
+                btn.Layout.Row = rowIdx;
+                btn.Layout.Column = colIdx;
+            end
         end
+
 
         function goto_bin(obj, binIdx)
             if binIdx < 1 || binIdx > obj.Data.NBins
