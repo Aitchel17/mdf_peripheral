@@ -11,6 +11,9 @@ classdef analysis_analog < handle
         force = struct()
         ball = struct()
         samplingfrequency
+        ampsetup = struct('ecog_dam80',10000,'emg_dam80',1000,'force_dagan',50)
+        ampbandpass = struct('ecog_dam80',[0.1 1000],'emg_dam80',[0.1 1000])
+        tekscanForcesensor = struct('Quickstartboard_outputVoltage',5,'A210sensor_newton',4.4)
     end
 
     methods
@@ -70,22 +73,46 @@ classdef analysis_analog < handle
                 ecog_fieldname
             end
             % ECoG processing
-            ECoG = obj.rawdata.(ecog_fieldname);
-            ecog_spectrum = analog_ecogspectrum(obj.samplingfrequency,ECoG);
+            %% Rescale
+            ecog_data = obj.rawdata.(ecog_fieldname);
+            %%
+            % converting parameters
+            analog_resolution = 2^str2double(obj.info.analogresolution(1:end-4));
+            scale2V = str2double(obj.info.ECoGinputrange(2:end-1));
+            %%
+            rescaledECoG = ecog_data*2/analog_resolution; % mScan recording scale
+            rescaledECoG = rescaledECoG*scale2V; % mScan scale factor
+            rescaledECoG = rescaledECoG/obj.ampsetup.ecog_dam80; % undo amplification
+            rescaledECoG = rescaledECoG*10^6; % scale from V to uV
+            %%
+            ecog_spectrum = analog_ecogspectrum(obj.samplingfrequency,rescaledECoG);
             obj.ecog.ecogspectrum = ecog_spectrum;
-            [rs_ecog, rs_t, rs_fs] = process_resample(obj.rawdata.(ecog_fieldname), obj.samplingfrequency, 60, obj.rawdata.taxis);
+            obj.rawdata.(ecog_fieldname) = rescaledECoG;
+            %%
+            plot(rescaledECoG)
+            %%
+            [rs_ecog, rs_t, rs_fs] = process_resample(rescaledECoG, obj.samplingfrequency, 60, obj.rawdata.taxis);
             obj.ecog.resampled_ecog = rs_ecog;
             obj.ecog.resampled_taxis = rs_t;
             obj.ecog.ds_fps = rs_fs;
         end
 
-        function get_emgpower(obj,emg_fieldname,fps)
+        function get_emgpower(obj,emg_fieldname)
             arguments
                 obj
                 emg_fieldname
-                fps = []
             end
-            [obj.emg.power, obj.emg.signal] = process_emg(obj.rawdata.(emg_fieldname),obj.samplingfrequency);
+
+            %% Rescale
+            % converting parameters
+            analog_resolution = 2^str2double(obj.info.analogresolution(1:end-4));
+            scale2V = str2double(obj.info.EMGinputrange(2:end-1));
+            rescaledEMG = obj.rawdata.(emg_fieldname)*2/analog_resolution; % mScan recording scale
+            rescaledEMG = rescaledEMG*scale2V; % mScan scale factor
+            rescaledEMG = rescaledEMG/obj.ampsetup.emg_dam80; % undo amplification
+            rescaledEMG = rescaledEMG*10e3; % scale from V to mV
+            %%
+            [obj.emg.power, obj.emg.signal] = process_emg(rescaledEMG,obj.samplingfrequency);
             [rs_power_data, rs_power_t, rs_power_fs] = process_resample(obj.emg.power, obj.samplingfrequency, 60, obj.rawdata.taxis);
             [rs_signal_data, ~, ~] = process_resample(obj.emg.signal, obj.samplingfrequency, 60, obj.rawdata.taxis);
 
@@ -93,16 +120,28 @@ classdef analysis_analog < handle
             obj.emg.resampled_signal = rs_signal_data;
             obj.emg.ds_fps = rs_power_fs;
             obj.emg.rs_taxis = rs_power_t;
+            obj.rawdata.(emg_fieldname) = rescaledEMG;
+            
         end
 
-        function get_binaryforce(obj,force_fieldname,fps)
+        function get_binaryforce(obj,force_fieldname)
             arguments
                 obj
                 force_fieldname
-                fps = []
             end
+            % converting parameters
+            %% Rescale
+            forcedata = obj.rawdata.(force_fieldname);
+            %% converting parameters
+            analog_resolution = 2^str2double(obj.info.analogresolution(1:end-4));
+            scale2V = str2double(obj.info.Forceinputrange(2:end-1));
+            rescaledForce = obj.rawdata.(force_fieldname)*2/analog_resolution; % mScan recording scale
+            rescaledForce = rescaledForce*scale2V; % mScan scale factor
+            rescaledForce = rescaledForce/obj.ampsetup.force_dagan; % undo amplification
+            rescaledForce = rescaledForce/obj.tekscanForcesensor.Quickstartboard_outputVoltage; % stretch to maxrange of evaluation board
+            rescaledForce = rescaledForce*obj.tekscanForcesensor.A210sensor_newton; % 
 
-            [rs_force_data, rs_force_t, rs_force_fs] = process_resample(obj.rawdata.(force_fieldname), obj.samplingfrequency, 60, obj.rawdata.taxis);
+            [rs_force_data, rs_force_t, rs_force_fs] = process_resample(rescaledForce, obj.samplingfrequency, 60, obj.rawdata.taxis);
             [lp_force, bin, threshold] = process_force(rs_force_data, rs_force_fs);
             obj.force.lowpass_force = lp_force;
             obj.force.thr_bin = bin;
@@ -110,6 +149,7 @@ classdef analysis_analog < handle
             obj.force.resampled_force = rs_force_data;
             obj.force.ds_fps = rs_force_fs;
             obj.force.rs_taxis = rs_force_t;
+            obj.rawdata.(force_fieldname) = rescaledForce;
         end
 
     end

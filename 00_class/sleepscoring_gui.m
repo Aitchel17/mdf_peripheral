@@ -22,7 +22,7 @@ classdef sleepscoring_gui < handle
     end
 
     methods
-        function obj = sleepscoring_gui(figStruct, session_duration, binWidth_s)
+        function obj = sleepscoring_gui(session_duration, binWidth_s)
             %SLEEPSCORING_GUI Construct an instance of the class
 
             if nargin < 3 || isempty(binWidth_s)
@@ -40,15 +40,6 @@ classdef sleepscoring_gui < handle
             obj.State.currentBinIdx = 1;
             obj.State.binsToScore = 1:NBins;
             obj.State.windows = [];
-
-            % Setup Figure
-            obj.setup_figure(figStruct);
-
-            % Setup Control Panel
-            obj.setup_control_panel();
-
-            % Start Navigation
-            obj.goto_bin(1);
         end
 
         function setup_figure(obj, figStruct)
