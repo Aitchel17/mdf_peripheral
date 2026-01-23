@@ -221,9 +221,6 @@ classdef sleepscoring_gui < handle
         end
 
 
-
-
-
         function goto_bin(obj, binIdx)
             if binIdx < 1 || binIdx > obj.Data.NBins
                 return;
@@ -246,6 +243,9 @@ classdef sleepscoring_gui < handle
 
             xlim(obj.Axes.scoring_emg,[x1 x2]);
             % xlim(obj.Axes.scoring_spec,[x1 x2]); % Linked
+
+            % Update state visualization on Force axis
+            obj.update_state_visualization(x1, x2);
 
         end
 
@@ -315,15 +315,17 @@ classdef sleepscoring_gui < handle
                 case 'bulk_plot'
                     [ok, lab, s, e] = obj.bulk_label_plot_dialog();
                     if ok
-                        obj.apply_bulk_label(s, e, lab);
+                        [~, bEnd] = obj.apply_bulk_label(s, e, lab);
                         obj.mark_bulk_region(s, e);
+                        obj.goto_bin(bEnd + 1);
                     end
 
                 case 'bulk_time'
                     [ok, lab, s, e] = obj.bulk_label_time_dialog();
                     if ok
-                        obj.apply_bulk_label(s, e, lab);
+                        [~, bEnd] = obj.apply_bulk_label(s, e, lab);
                         obj.mark_bulk_region(s, e);
+                        obj.goto_bin(bEnd + 1);
                     end
 
                 case 'finishwin'
@@ -331,10 +333,9 @@ classdef sleepscoring_gui < handle
                     % Then jump to next
                     xl = get(obj.Axes.scoring_emg, 'XLim');
                     sW = max(0,xl(1)); eW=min(obj.Data.allDur_s, xl(2));
-                    obj.apply_bulk_label(sW, eW, 'Not Sleep', true); % true = only if empty
+                    [~, bEnd] = obj.apply_bulk_label(sW, eW, 'Not Sleep', true); % true = only if empty
 
-                    bEn = min(obj.Data.NBins, ceil(eW/obj.Data.binWidth_s));
-                    obj.goto_bin(bEn + 1);
+                    obj.goto_bin(bEnd + 1);
             end
         end
 
@@ -410,7 +411,7 @@ classdef sleepscoring_gui < handle
             ok = true;
         end
 
-        function apply_bulk_label(obj, s, e, label, onlyIfEmpty)
+        function [bStart, bEnd] = apply_bulk_label(obj, s, e, label, onlyIfEmpty)
             if nargin < 5, onlyIfEmpty = false; end
 
             bStart = max(1, floor(s / obj.Data.binWidth_s)+1);
@@ -485,6 +486,49 @@ classdef sleepscoring_gui < handle
                 end
                 t1 = edges(i); t2 = edges(i+1);
                 patch(ax, [t1 t2 t2 t1], [0 0 1 1], c, 'EdgeColor','none');
+            end
+        end
+
+        function update_state_visualization(obj, xStart, xEnd)
+            % Draw colored patches for sleep states on Force axis
+            ax = obj.Axes.force;
+
+            % Delete old patches
+            h = findobj(ax, 'Tag', 'StatePatch');
+            delete(h);
+
+            % Colors (matching add_sleep_bands)
+            cNot=[0.8 0.8 0.8]; cNREM=[0.3 0.7 1]; cREM=[1 0.4 0.4];
+
+            % Determine bin range
+            bStart = max(1, floor(xStart / obj.Data.binWidth_s) + 1);
+            bEnd   = min(obj.Data.NBins, ceil(xEnd / obj.Data.binWidth_s));
+
+            yl = get(ax, 'YLim');
+            yLow = yl(1); yHigh = yl(2);
+
+            hold(ax, 'on');
+            for b = bStart:bEnd
+                state = obj.State.behavioralState{b};
+                if isempty(state), continue; end
+
+                switch state
+                    case 'Not Sleep', c=cNot;
+                    case 'NREM Sleep', c=cNREM;
+                    case 'REM Sleep', c=cREM;
+                    otherwise, continue;
+                end
+
+                t1 = (b-1) * obj.Data.binWidth_s;
+                t2 = b * obj.Data.binWidth_s;
+
+                % Constrain to view (optional, but cleaner)
+                t1 = max(t1, xStart);
+                t2 = min(t2, xEnd);
+                if t1 >= t2, continue; end
+
+                patch(ax, [t1 t2 t2 t1], [yLow yLow yHigh yHigh], c, ...
+                    'FaceAlpha', 0.4, 'EdgeColor', 'none', 'Tag', 'StatePatch', 'HitTest', 'off');
             end
         end
 

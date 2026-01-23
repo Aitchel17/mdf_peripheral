@@ -86,7 +86,7 @@ figStruct.rawECoG.fig.Visible = 'off';
 figStruct.rawemg.fig.Visible = 'off';
 figStruct.emg_power.fig.Visible = 'off';
 figStruct.whisker.fig.Visible = 'off';
-
+figStruct.pupil.fig.Visible = 'off';
 %%
 figStruct.spectrogram.fig.Visible = 'on';
 figStruct.force.fig.Visible = 'on';
@@ -100,9 +100,7 @@ figStruct.pupil.fig.Visible = 'on';
 session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
 sleepscore = sleepscoring_gui(session_duration);
 sleepscore.setup_figure(figStruct)
-%%
 sleepscore.setup_control_panel();
-%%
 sleepscore.goto_bin(1);
 
 %% Save Figures to Peripheral Folder
