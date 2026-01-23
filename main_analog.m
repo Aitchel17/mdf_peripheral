@@ -62,7 +62,23 @@ xlabel(figStruct.force.ax, 'Time (sec)')
 % ECoG figure
 figStruct.spectrogram.reset_axis
 figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum)
+%%
+%% 99. ECoG baseline selection
+session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
+ECoG_baseline = sleepscoring_gui(session_duration);
+ECoG_baseline.setup_figure(figStruct)
+ECoG_baseline.setup_control_panel();
+%%
+ECoG_baseline.get_results
 
+
+%%
+session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
+sleep_score = sleepscoring_gui(session_duration);
+sleep_score.setup_figure(figStruct)
+sleep_score.setup_control_panel();
+%%
+uiwait(sleep_score.figHandle);
 
 %% Save Analysis Object
 fprintf('Saving primary_analog object...\n');
@@ -79,29 +95,9 @@ camera_session.run_pupil_analysis(peripheral_session.dir_struct.eye)
 figStruct.whisker.plot_line(camera_session.whisker.var_mean_whisker,"XAxis",camera_session.whisker.var_taxis)
 ylabel(figStruct.whisker.ax, 'Face mean variance')
 xlabel(figStruct.whisker.ax, 'Time (sec)')
-%%
-figStruct.spectrogram.fig.Visible = 'off';
-figStruct.force.fig.Visible = 'off';
-figStruct.rawECoG.fig.Visible = 'off';
-figStruct.rawemg.fig.Visible = 'off';
-figStruct.emg_power.fig.Visible = 'off';
-figStruct.whisker.fig.Visible = 'off';
-figStruct.pupil.fig.Visible = 'off';
-%%
-figStruct.spectrogram.fig.Visible = 'on';
-figStruct.force.fig.Visible = 'on';
-figStruct.rawECoG.fig.Visible = 'on';
-figStruct.rawemg.fig.Visible = 'on';
-figStruct.emg_power.fig.Visible = 'on';
-figStruct.whisker.fig.Visible = 'on';
-figStruct.pupil.fig.Visible = 'on';
 
-%% 99. Behavior data analysis
-session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
-sleepscore = sleepscoring_gui(session_duration);
-sleepscore.setup_figure(figStruct)
-sleepscore.setup_control_panel();
-sleepscore.goto_bin(1);
+
+
 
 %% Save Figures to Peripheral Folder
 output_dir = peripheral_session.dir_struct.peripheral;
@@ -118,4 +114,19 @@ end
 disp('All figures saved.');
 
 
-
+%%
+figStruct.spectrogram.fig.Visible = 'off';
+figStruct.force.fig.Visible = 'off';
+figStruct.rawECoG.fig.Visible = 'off';
+figStruct.rawemg.fig.Visible = 'off';
+figStruct.emg_power.fig.Visible = 'off';
+figStruct.whisker.fig.Visible = 'off';
+figStruct.pupil.fig.Visible = 'off';
+%%
+figStruct.spectrogram.fig.Visible = 'on';
+figStruct.force.fig.Visible = 'on';
+figStruct.rawECoG.fig.Visible = 'on';
+figStruct.rawemg.fig.Visible = 'on';
+figStruct.emg_power.fig.Visible = 'on';
+figStruct.whisker.fig.Visible = 'on';
+figStruct.pupil.fig.Visible = 'on';

@@ -7,6 +7,9 @@ classdef sleepscoring_gui < handle
     properties (Access = public)
         Data
         State
+    end
+
+    properties (Hidden)
         Axes
         figHandle
         GUI
@@ -24,6 +27,13 @@ classdef sleepscoring_gui < handle
         green     = [0.20 0.65 0.20];
         cyan      = [0.00 0.70 0.85];
         white     = [1 1 1];
+    end
+
+    properties (Constant)
+        % Numeric State Codes
+        StateCodes = struct('Unscored', 0, 'NotSleep', 1, 'NREM', 2, 'REM', 3);
+        % Names for display/export (Indexed by Code+1)
+        StateNames = {'Unscored', 'Not Sleep', 'NREM Sleep', 'REM Sleep'};
     end
 
     events
@@ -45,7 +55,7 @@ classdef sleepscoring_gui < handle
             obj.Data.allDur_s = session_duration;
 
             % Initialize State
-            obj.State.behavioralState = cell(NBins, 1);
+            obj.State.behavioralState = zeros(NBins, 1); % Numeric 0
             obj.State.currentBinIdx = 1;
             obj.State.binsToScore = 1:NBins;
             obj.State.windows = [];
@@ -109,6 +119,13 @@ classdef sleepscoring_gui < handle
             % Scoring axes references
             obj.Axes.scoring_emg = obj.Axes.emg_power;
             obj.Axes.scoring_spec = obj.Axes.spectrogram;
+
+            % Pre-allocate markers for performance
+            obj.GUI.hMarker1 = xline(obj.Axes.scoring_emg, -100,'-','Color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
+            obj.GUI.hMarker2 = xline(obj.Axes.scoring_emg, -100,'-','Color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
+            obj.GUI.hMarker3 = xline(obj.Axes.scoring_spec, -100,'-','Color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
+            obj.GUI.hMarker4 = xline(obj.Axes.scoring_spec, -100,'-','Color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
+
         end
 
         function setup_control_panel(obj)
@@ -141,6 +158,7 @@ classdef sleepscoring_gui < handle
             obj.GUI.cpFig = uifigure('Name', 'Scoring Controls', ...
                 'Position', [LeftEdge, BottomEdge, WindowSize], ...
                 'Resize', 'on', ...
+                'WindowKeyPressFcn', @obj.key_press_handler, ...
                 'CloseRequestFcn', @(~,~) obj.close_request_handler());
 
             % Main Layout: 2 Rows (State Selection, Tools)
@@ -161,19 +179,19 @@ classdef sleepscoring_gui < handle
             uibutton(StateLayout, 'Text', 'Not Sleep (A)', ...
                 'BackgroundColor', obj.black, 'FontColor', obj.white, ...
                 'FontWeight', 'bold', 'FontSize', 14, ...
-                'ButtonPushedFcn', @(~,~) obj.score_current_bin('Not Sleep'));
+                'ButtonPushedFcn', @(~,~) obj.handle_event('Button', 'Not Sleep'));
 
             % NREM Sleep (Blue)
             uibutton(StateLayout, 'Text', 'NREM Sleep (N)', ...
                 'BackgroundColor', obj.blue, 'FontColor', obj.white, ...
                 'FontWeight', 'bold', 'FontSize', 14, ...
-                'ButtonPushedFcn', @(~,~) obj.score_current_bin('NREM Sleep'));
+                'ButtonPushedFcn', @(~,~) obj.handle_event('Button', 'NREM Sleep'));
 
             % REM Sleep (Red)
             uibutton(StateLayout, 'Text', 'REM Sleep (R)', ...
                 'BackgroundColor', obj.red, 'FontColor', obj.white, ...
                 'FontWeight', 'bold', 'FontSize', 14, ...
-                'ButtonPushedFcn', @(~,~) obj.score_current_bin('REM Sleep'));
+                'ButtonPushedFcn', @(~,~) obj.handle_event('Button', 'REM Sleep'));
 
             % --- Panel 2: Tools & Navigation ---
             ToolsPanel = uipanel(MainLayout, 'Title', 'Tools & Nav');
@@ -184,6 +202,7 @@ classdef sleepscoring_gui < handle
             ToolsLayout.Padding = [5 5 5 5];
 
             % Tools Configuration
+            % {Action, Color, Tag}
             btnConfig = {
                 'Continue', obj.blue, 'continue';
                 'End here', obj.red, 'end';
@@ -198,19 +217,14 @@ classdef sleepscoring_gui < handle
 
             for i = 1:size(btnConfig,1)
                 actionStr = btnConfig{i,3};
-                if strcmp(actionStr, 'plot_scores')
-                    cb = @(src,event)obj.plot_scores_overview();
-                else
-                    cb = @(src,event)obj.panel_action(actionStr);
-                end
-
+                callback = @(src,event)obj.handle_event('Button', actionStr);
                 % Create Button
                 btn = uibutton(ToolsLayout, ...
                     'Text', btnConfig{i,1}, ...
                     'FontWeight', 'bold', ...
                     'FontColor', obj.white, ...
                     'BackgroundColor', btnConfig{i,2}, ...
-                    'ButtonPushedFcn', cb);
+                    'ButtonPushedFcn', callback);
 
                 % Position logic matches simple grid fill
                 rowIdx = ceil(i/3);
@@ -220,7 +234,32 @@ classdef sleepscoring_gui < handle
             end
         end
 
+        function plot_scores_overview(obj)
+            figure('Name', 'Sleep Score Overview');
+            ax = axes();
+            % Inline add_sleep_bands logic
+            hold(ax, 'on');
+            cNot=[0.8 0.8 0.8]; cNREM=[0.3 0.7 1]; cREM=[1 0.4 0.4];
+            states = obj.State.behavioralState;
+            edges = 0:obj.Data.binWidth_s:obj.Data.allDur_s;
 
+            for i=1:numel(states)
+                if states(i) == obj.StateCodes.Unscored, continue; end
+                switch states(i)
+                    case obj.StateCodes.NotSleep, c=cNot;
+                    case obj.StateCodes.NREM, c=cNREM;
+                    case obj.StateCodes.REM, c=cREM;
+                    otherwise, c=[1 1 1];
+                end
+                t1 = edges(i); t2 = edges(i+1);
+                patch(ax, [t1 t2 t2 t1], [0 0 1 1], c, 'EdgeColor','none');
+            end
+            title('Score Overview (Bands)');
+        end
+    end
+
+    % --- Helper Methods ---
+    methods
         function goto_bin(obj, binIdx)
             if binIdx < 1 || binIdx > obj.Data.NBins
                 return;
@@ -250,97 +289,30 @@ classdef sleepscoring_gui < handle
         end
 
         function draw_bin_markers(obj, xStart, xEnd)
-            % Delete old
-            h = findobj(obj.figHandle, 'Tag', 'BinMarker');
-            delete(h);
-
-            % Draw new (Color [0.75 0 1] = Purple)
-            subplot(obj.Axes.scoring_emg); hold on;
-            xline(xStart,'color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
-            xline(xEnd,  'color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
-
-            subplot(obj.Axes.scoring_spec); hold on;
-            xline(xStart,'color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
-            xline(xEnd,  'color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
-        end
-
-        function panel_action(obj, action)
-            % Handles actions from the Control Panel (e.g. 'continue', 'jump', etc.)
-
-            switch action
-                case 'continue'
-                    % Just move next? Or do nothing (it's mainly for resuming from pause)
-                    % In loop version, it breaks the wait. Here we are event driven.
-                    % Maybe advance if unscored, or just stay.
-
-                case 'end'
-                    obj.close_request_handler();
-
-                case 'view'
-                    % View remainder
-                    try pan(obj.figHandle,'off'); zoom(obj.figHandle,'off'); catch, end
-                    xStart = (obj.State.currentBinIdx)*obj.Data.binWidth_s;
-                    xlim(obj.Axes.scoring_emg,[xStart obj.Data.allDur_s]);
-                    % Enable click zoom
-                    obj.enable_click_zoom(true);
-
-                    % Ask user how to proceed
-                    ch = questdlg('Viewing remainder. Next?','View','Continue','End here','Jump in plot','Continue');
-
-                    obj.enable_click_zoom(false);
-
-                    if strcmp(ch,'End here')
-                        obj.close_request_handler();
-                    elseif strcmp(ch,'Jump in plot')
-                        obj.panel_action('jump_plot');
-                    end
-
-                case 'jump_plot'
-                    [targetBi, betIdx] = obj.pick_jump_plot();
-                    if ~isempty(targetBi)
-                        if targetBi > obj.State.currentBinIdx
-                            % Mark in between as empty?
-                            % obj.fill_empty_bins(betIdx); % Optional
-                        end
-                        obj.goto_bin(targetBi);
-                    end
-
-                case 'jump_time'
-                    % Similar to jump_plot but with inputdlg
-                    [targetBi, betIdx] = obj.pick_jump_time();
-                    if ~isempty(targetBi)
-                        obj.goto_bin(targetBi);
-                    end
-
-                case 'bulk_plot'
-                    [ok, lab, s, e] = obj.bulk_label_plot_dialog();
-                    if ok
-                        [~, bEnd] = obj.apply_bulk_label(s, e, lab);
-                        obj.mark_bulk_region(s, e);
-                        obj.goto_bin(bEnd + 1);
-                    end
-
-                case 'bulk_time'
-                    [ok, lab, s, e] = obj.bulk_label_time_dialog();
-                    if ok
-                        [~, bEnd] = obj.apply_bulk_label(s, e, lab);
-                        obj.mark_bulk_region(s, e);
-                        obj.goto_bin(bEnd + 1);
-                    end
-
-                case 'finishwin'
-                    % Label all visible bins in current window as Not Sleep (if empty)
-                    % Then jump to next
-                    xl = get(obj.Axes.scoring_emg, 'XLim');
-                    sW = max(0,xl(1)); eW=min(obj.Data.allDur_s, xl(2));
-                    [~, bEnd] = obj.apply_bulk_label(sW, eW, 'Not Sleep', true); % true = only if empty
-
-                    obj.goto_bin(bEnd + 1);
+            % Fast update using stored handles
+            if isfield(obj.GUI, 'hMarker1') && isvalid(obj.GUI.hMarker1)
+                obj.GUI.hMarker1.Value = xStart;
+                obj.GUI.hMarker2.Value = xEnd;
+                obj.GUI.hMarker3.Value = xStart;
+                obj.GUI.hMarker4.Value = xEnd;
+            else
+                % Fallback: Re-create if deleted
+                obj.GUI.hMarker1 = xline(obj.Axes.scoring_emg, xStart,'-','Color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
+                obj.GUI.hMarker2 = xline(obj.Axes.scoring_emg, xEnd,'-','Color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
+                obj.GUI.hMarker3 = xline(obj.Axes.scoring_spec, xStart,'-','Color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
+                obj.GUI.hMarker4 = xline(obj.Axes.scoring_spec, xEnd,'-','Color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
             end
         end
 
-        function score_current_bin(obj, label)
-            obj.State.behavioralState{obj.State.currentBinIdx} = label;
+        function panel_action(obj, action)
+            % Legacy wrapper to maintain compatibility if called externally, routes to handle_event
+            obj.handle_event('Button', action);
+        end
+
+
+
+        function score_current_bin(obj, labelCode)
+            obj.State.behavioralState(obj.State.currentBinIdx) = labelCode;
             obj.advance_bin(1);
         end
 
@@ -383,8 +355,9 @@ classdef sleepscoring_gui < handle
                 'ListString',{'Not Sleep','NREM Sleep','REM Sleep'}, ...
                 'InitialValue',1,'ListSize',[180 90]);
             if ~tf, return; end
-            labels = {'Not Sleep','NREM Sleep','REM Sleep'};
-            selLabel = labels{indx};
+            % Map selection to numeric code
+            possibleCodes = [obj.StateCodes.NotSleep, obj.StateCodes.NREM, obj.StateCodes.REM];
+            selLabel = possibleCodes(indx);
 
             figure(obj.figHandle);
             [x1,~,~] = ginput(1); if isempty(x1), return; end
@@ -401,8 +374,9 @@ classdef sleepscoring_gui < handle
                 'ListString',{'Not Sleep','NREM Sleep','REM Sleep'}, ...
                 'InitialValue',1,'ListSize',[180 90]);
             if ~tf, return; end
-            labels = {'Not Sleep','NREM Sleep','REM Sleep'};
-            selLabel = labels{indx};
+            % Map selection to numeric code
+            possibleCodes = [obj.StateCodes.NotSleep, obj.StateCodes.NREM, obj.StateCodes.REM];
+            selLabel = possibleCodes(indx);
 
             answ = inputdlg({'Start time (s):','End time (s):'}, ...
                 'Bulk label (time)',[1 28], {'0', num2str(obj.Data.allDur_s)});
@@ -418,8 +392,9 @@ classdef sleepscoring_gui < handle
             bEnd   = min(obj.Data.NBins, ceil(e / obj.Data.binWidth_s));
 
             for b = bStart:bEnd
-                if ~onlyIfEmpty || isempty(obj.State.behavioralState{b})
-                    obj.State.behavioralState{b} = label;
+                % Check if empty (0)
+                if ~onlyIfEmpty || obj.State.behavioralState(b) == 0
+                    obj.State.behavioralState(b) = label;
                 end
             end
             disp(['Bulk labeled ' num2str(bStart) ':' num2str(bEnd) ' as ' label]);
@@ -448,7 +423,7 @@ classdef sleepscoring_gui < handle
             end
         end
 
-        function click_zoom_handler_cb(obj, src, evt)
+        function click_zoom_handler_cb(obj, ~, ~)
             % Logic to zoom into point
             cp = get(gca, 'CurrentPoint'); cx = cp(1,1);
             % Zoom logic (simple center)
@@ -457,37 +432,6 @@ classdef sleepscoring_gui < handle
             xlim(obj.Axes.scoring_emg, [x1 x2]);
         end
 
-        function plot_scores_overview(obj)
-            % Port showSleepScoreOverview Logic
-            % This creates a new figure with summary
-            figure('Name', 'Sleep Score Overview');
-            % For now, just a placeholder plot as we don't have full data reconstruction logic inside class yet
-            % Ideally we pass 'ProcData' path or similar.
-            % For this edit, I will just visualize the STATES bar.
-
-            ax = axes();
-            obj.add_sleep_bands(ax, obj.State.behavioralState, 0:obj.Data.binWidth_s:obj.Data.allDur_s, obj.Data.allDur_s);
-            title('Score Overview (Bands)');
-        end
-
-        function add_sleep_bands(obj, ax, states, edges, dur)
-            % (Port of addSleepBandsOutsideAxis logic)
-            % Just draws the colored ribbon
-            hold(ax, 'on');
-            cNot=[0.8 0.8 0.8]; cNREM=[0.3 0.7 1]; cREM=[1 0.4 0.4];
-
-            for i=1:numel(states)
-                if isempty(states{i}), continue; end
-                switch states{i}
-                    case 'Not Sleep', c=cNot;
-                    case 'NREM Sleep', c=cNREM;
-                    case 'REM Sleep', c=cREM;
-                    otherwise, c=[1 1 1];
-                end
-                t1 = edges(i); t2 = edges(i+1);
-                patch(ax, [t1 t2 t2 t1], [0 0 1 1], c, 'EdgeColor','none');
-            end
-        end
 
         function update_state_visualization(obj, xStart, xEnd)
             % Draw colored patches for sleep states on Force axis
@@ -509,13 +453,13 @@ classdef sleepscoring_gui < handle
 
             hold(ax, 'on');
             for b = bStart:bEnd
-                state = obj.State.behavioralState{b};
-                if isempty(state), continue; end
+                state = obj.State.behavioralState(b);
+                if state == obj.StateCodes.Unscored, continue; end
 
                 switch state
-                    case 'Not Sleep', c=cNot;
-                    case 'NREM Sleep', c=cNREM;
-                    case 'REM Sleep', c=cREM;
+                    case obj.StateCodes.NotSleep, c=cNot;
+                    case obj.StateCodes.NREM, c=cNREM;
+                    case obj.StateCodes.REM, c=cREM;
                     otherwise, continue;
                 end
 
@@ -532,19 +476,32 @@ classdef sleepscoring_gui < handle
             end
         end
 
-        function key_press_handler(obj, ~, event)
-            switch event.Key
-                % Not Sleep
-                case {'a', '1'}, obj.score_current_bin('Not Sleep');
-                    % NREM Sleep
-                case {'n', '2'}, obj.score_current_bin('NREM Sleep');
-                    % REM Sleep
-                case {'r', '3'}, obj.score_current_bin('REM Sleep');
 
-                    % Navigation
-                case {'k', 'rightarrow'}, obj.advance_bin(1);
-                case {'j', 'leftarrow'}, obj.advance_bin(-1);
+
+        function t = get_results(obj)
+            % Create table with numeric state and string representation
+            numericState = obj.State.behavioralState;
+
+            % Map to strings
+            strState = cell(size(numericState));
+            for i = 1:length(numericState)
+                idx = numericState(i) + 1; % 0-indexed code
+                if idx >= 1 && idx <= length(obj.StateNames)
+                    strState{i} = obj.StateNames{idx};
+                else
+                    strState{i} = 'Unknown';
+                end
             end
+
+            t = table(numericState, strState, 'VariableNames', {'behavState', 'behavStateStr'});
+        end
+    end
+
+    % Methods for events
+    methods (Access = private)
+
+        function key_press_handler(obj, ~, event)
+            obj.handle_event('Key', event.Key);
         end
 
         function close_request_handler(obj, ~, ~)
@@ -556,9 +513,104 @@ classdef sleepscoring_gui < handle
             notify(obj, 'ScoringComplete');
         end
 
-        function t = get_results(obj)
-            t = table(obj.State.behavioralState, 'VariableNames', {'behavState'});
+        function handle_event(obj, source, eventData)
+            % Centralized event handler (Private)
+
+            % Normalize actions
+            action = '';
+
+            if strcmp(source, 'Key')
+                switch eventData
+                    case {'a', '1'}, action = obj.StateCodes.NotSleep;
+                    case {'n', '2'}, action = obj.StateCodes.NREM;
+                    case {'r', '3'}, action = obj.StateCodes.REM;
+                    case {'k', 'rightarrow'}, action = 'next_bin';
+                    case {'j', 'leftarrow'}, action = 'prev_bin';
+                end
+            elseif strcmp(source, 'Button')
+                switch eventData
+                    case 'Not Sleep', action = obj.StateCodes.NotSleep;
+                    case 'NREM Sleep', action = obj.StateCodes.NREM;
+                    case 'REM Sleep', action = obj.StateCodes.REM;
+                    otherwise, action = eventData;
+                end
+            end
+
+            if isempty(action), return; end
+
+            % Dispatch
+            if isnumeric(action)
+                obj.score_current_bin(action);
+            else
+                switch action
+                    % Navigation
+
+                    case 'next_bin'
+                        obj.advance_bin(1);
+                    case 'prev_bin'
+                        obj.advance_bin(-1);
+                    case 'continue'
+                        % Placeholder
+
+                    case 'end'
+                        obj.close_request_handler();
+
+                        % Tools
+                    case 'view'
+                        % View remainder logic
+                        % (Moved from panel_action)
+                        try pan(obj.figHandle,'off'); zoom(obj.figHandle,'off'); catch, end
+                        xStart = (obj.State.currentBinIdx)*obj.Data.binWidth_s;
+                        xlim(obj.Axes.scoring_emg,[xStart obj.Data.allDur_s]);
+                        obj.enable_click_zoom(true);
+
+                        ch = questdlg('Viewing remainder. Next?','View','Continue','End here','Jump in plot','Continue');
+
+                        obj.enable_click_zoom(false);
+
+                        if strcmp(ch,'End here')
+                            obj.close_request_handler();
+                        elseif strcmp(ch,'Jump in plot')
+                            obj.handle_event('Button', 'jump_plot');
+                        end
+
+                    case 'jump_plot'
+                        [targetBi, betIdx] = obj.pick_jump_plot();
+                        if ~isempty(targetBi)
+                            if targetBi > obj.State.currentBinIdx
+                                % obj.fill_empty_bins(betIdx);
+                            end
+                            obj.goto_bin(targetBi);
+                        end
+                    case 'jump_time'
+                        [targetBi, betIdx] = obj.pick_jump_time();
+                        if ~isempty(targetBi)
+                            obj.goto_bin(targetBi);
+                        end
+                    case 'bulk_plot'
+                        [ok, lab, s, e] = obj.bulk_label_plot_dialog();
+                        if ok
+                            [~, bEnd] = obj.apply_bulk_label(s, e, lab);
+                            obj.mark_bulk_region(s, e);
+                            obj.goto_bin(bEnd + 1);
+                        end
+                    case 'bulk_time'
+                        [ok, lab, s, e] = obj.bulk_label_time_dialog();
+                        if ok
+                            [~, bEnd] = obj.apply_bulk_label(s, e, lab);
+                            obj.mark_bulk_region(s, e);
+                            obj.goto_bin(bEnd + 1);
+                        end
+                    case 'finishwin'
+                        xl = get(obj.Axes.scoring_emg, 'XLim');
+                        sW = max(0,xl(1)); eW=min(obj.Data.allDur_s, xl(2));
+                        [~, bEnd] = obj.apply_bulk_label(sW, eW, obj.StateCodes.NotSleep, true);
+
+                        obj.goto_bin(bEnd + 1);
+                    case 'plot_scores'
+                        obj.plot_scores_overview();
+                end
+            end
         end
     end
-
 end
