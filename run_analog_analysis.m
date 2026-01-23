@@ -6,7 +6,7 @@ function primary_analog = run_analog_analysis(peripheral_session)
 
 % Create analysis_analog object using loaded info and data
 % analysis_analog constructor: obj = analysis_analog(info, data)
-primary_analog = analysis_analog(peripheral_session.raw_analog.info, peripheral_session.raw_analog.data);
+primary_analog = analysis_analog(peripheral_session.raw_analog.info, peripheral_session.loadanalog_data);
 
 %% Analyze Air Puff
 if isfield(primary_analog.rawdata, 'raw_Air_puff1')

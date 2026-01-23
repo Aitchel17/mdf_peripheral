@@ -1,16 +1,14 @@
 %% 1. Load Data
 base_path = 'G:\tmp\00_igkl\hql090\251016_hql090_sleep\HQL090_sleep251016_002';
 peripheral_session = peripheral_mdf(base_path);
+
 %% 2. Run or load Analysis
-if exist(fullfile(peripheral_session.dir_struct.peripheral,"analysis_analog.mat"))
+
+if exist(fullfile(peripheral_session.dir_struct.peripheral,"analysis_analog.mat"),"file") == 2
     primary_analog = analysis_analog.load_object(peripheral_session.dir_struct.peripheral);
 else
-    peripheral_session = peripheral_session.loadraw_analogdata;
     primary_analog = run_analog_analysis(peripheral_session);
 end
-%% 2.1 Load analog analysis
-primary_analog = analysis_analog.load_object(peripheral_session.dir_struct.peripheral);
-
 %% Initialize Figure Struct
 figStruct = struct();
 figStruct.emg_power = peripheral_fig('EMG');
@@ -20,22 +18,14 @@ figStruct.force = peripheral_fig('Force');
 figStruct.spectrogram = peripheral_fig('ecog_spectrum');
 figStruct.whisker = peripheral_fig('Whisker var');
 figStruct.pupil = peripheral_fig('Pupil_dlc');
-%%
+
 figStruct.emg_power.fig.Position = [30 7 8 3];
-%%
 figStruct.rawemg.fig.Position = [21 7 8 3];%[30 7 8 3]%[21 3.5 8 3];
-%%
 figStruct.rawECoG.fig.Position = [30 0.5 8 3];
 figStruct.rawECoG.fig.Visible = 'off';
-
-%%
 figStruct.spectrogram.fig.Position = [21 3.5 8 3];%[30 7 8 3];
-%%
-figStruct.force.fig.Position = [20 1 17 9];
-
-%%
+figStruct.force.fig.Position = [21 0.5 8 3];
 figStruct.whisker.fig.Position = [30 0.5 8 3];
-%%
 figStruct.pupil.fig.Position = [30 3.5 8 3];
 figStruct.pupil.fig.Visible = 'on';
 
@@ -78,8 +68,6 @@ figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum)
 fprintf('Saving primary_analog object...\n');
 primary_analog.save_object(output_dir);
 
-%% save figure
-figStruct.spectrogram.save_plot;
 
 %% Behaviorcam processing
 camera_session = analysis_camera(peripheral_session);

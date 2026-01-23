@@ -14,8 +14,6 @@ classdef sleepscoring_gui < handle
 
     properties (Access = private)
         monitor_pos = [20 1 17 9];
-        selector_is_open = false;
-        PollTimer         % Timer for polling globals
         % Colors
         blue      = [0.00 0.45 0.90];
         red       = [0.85 0.10 0.10];
@@ -115,10 +113,10 @@ classdef sleepscoring_gui < handle
 
         function setup_control_panel(obj)
             % Re-implement createControlPanel logic using uifigure/uigridlayout
-            % Style based on jake.m
+            % Incorporates Sleep State buttons directly.
 
             % Window Size
-            WindowSize = [500, 300]; % [Width, Height] in pixels
+            WindowSize = [500, 400]; % Increased height for better layout
 
             % Determine Position (Top-Right of Main Figure)
             if ~isempty(obj.figHandle) && isvalid(obj.figHandle)
@@ -145,13 +143,47 @@ classdef sleepscoring_gui < handle
                 'Resize', 'on', ...
                 'CloseRequestFcn', @(~,~) obj.close_request_handler());
 
-            % Main Layout: 3x3 Grid
-            MainLayout = uigridlayout(obj.GUI.cpFig, [3,3]);
-            MainLayout.RowHeight = {'1x', '1x', '1x'};
-            MainLayout.ColumnWidth = {'1x', '1x', '1x'};
+            % Main Layout: 2 Rows (State Selection, Tools)
+            MainLayout = uigridlayout(obj.GUI.cpFig, [2,1]);
+            MainLayout.RowHeight = {100, '1x'};
+            MainLayout.Padding = [10 10 10 10];
+            MainLayout.RowSpacing = 10;
 
-            % --- Buttons Configuration ---
-            % Flow: Top-Left -> Bottom-Right (Row by Row)
+            % --- Panel 1: Sleep State Selection ---
+            StatePanel = uipanel(MainLayout, 'Title', 'Sleep State');
+            StatePanel.Layout.Row = 1;
+            StateLayout = uigridlayout(StatePanel, [1,3]);
+            StateLayout.ColumnWidth = {'1x', '1x', '1x'};
+            StateLayout.Padding = [5 5 5 5];
+
+            % State Buttons
+            % Not Sleep (Black)
+            uibutton(StateLayout, 'Text', 'Not Sleep (A)', ...
+                'BackgroundColor', obj.black, 'FontColor', obj.white, ...
+                'FontWeight', 'bold', 'FontSize', 14, ...
+                'ButtonPushedFcn', @(~,~) obj.score_current_bin('Not Sleep'));
+
+            % NREM Sleep (Blue)
+            uibutton(StateLayout, 'Text', 'NREM Sleep (N)', ...
+                'BackgroundColor', obj.blue, 'FontColor', obj.white, ...
+                'FontWeight', 'bold', 'FontSize', 14, ...
+                'ButtonPushedFcn', @(~,~) obj.score_current_bin('NREM Sleep'));
+
+            % REM Sleep (Red)
+            uibutton(StateLayout, 'Text', 'REM Sleep (R)', ...
+                'BackgroundColor', obj.red, 'FontColor', obj.white, ...
+                'FontWeight', 'bold', 'FontSize', 14, ...
+                'ButtonPushedFcn', @(~,~) obj.score_current_bin('REM Sleep'));
+
+            % --- Panel 2: Tools & Navigation ---
+            ToolsPanel = uipanel(MainLayout, 'Title', 'Tools & Nav');
+            ToolsPanel.Layout.Row = 2;
+            ToolsLayout = uigridlayout(ToolsPanel, [3,3]); % 3x3 Grid
+            ToolsLayout.RowHeight = {'1x', '1x', '1x'};
+            ToolsLayout.ColumnWidth = {'1x', '1x', '1x'};
+            ToolsLayout.Padding = [5 5 5 5];
+
+            % Tools Configuration
             btnConfig = {
                 'Continue', obj.blue, 'continue';
                 'End here', obj.red, 'end';
@@ -173,20 +205,23 @@ classdef sleepscoring_gui < handle
                 end
 
                 % Create Button
-                btn = uibutton(MainLayout, ...
+                btn = uibutton(ToolsLayout, ...
                     'Text', btnConfig{i,1}, ...
                     'FontWeight', 'bold', ...
                     'FontColor', obj.white, ...
                     'BackgroundColor', btnConfig{i,2}, ...
                     'ButtonPushedFcn', cb);
 
-                % Assign Grid Position (Row-Major)
+                % Position logic matches simple grid fill
                 rowIdx = ceil(i/3);
                 colIdx = mod(i-1, 3) + 1;
                 btn.Layout.Row = rowIdx;
                 btn.Layout.Column = colIdx;
             end
         end
+
+
+
 
 
         function goto_bin(obj, binIdx)
@@ -212,11 +247,6 @@ classdef sleepscoring_gui < handle
             xlim(obj.Axes.scoring_emg,[x1 x2]);
             % xlim(obj.Axes.scoring_spec,[x1 x2]); % Linked
 
-            % Launch External Selector (or ensure it's open)
-            obj.setup_selector_gui();
-            % Bring to front?
-            hFig = findall(0, 'Type', 'figure', '-regexp', 'Name', 'Select.*Sleep|Sleep.*State');
-            if ~isempty(hFig), try figure(hFig(1)); catch, end; end
         end
 
         function draw_bin_markers(obj, xStart, xEnd)
@@ -232,85 +262,6 @@ classdef sleepscoring_gui < handle
             subplot(obj.Axes.scoring_spec); hold on;
             xline(xStart,'color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
             xline(xEnd,  'color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
-        end
-
-        function setup_selector_gui(obj)
-            % Launch external selector (Functional / Global Var based)
-
-            % Check if already open (Robust check like CreateTrainingDataSet)
-            hFig = findall(0, 'Type', 'figure', '-regexp', 'Name', 'Select.*Sleep|Sleep.*State');
-            if isempty(hFig) || ~isvalid(hFig)
-                % Reset globals
-                global buttonState ButtonValue closeButtonState
-                buttonState = 0;
-                ButtonValue = 0;
-                closeButtonState = 0;
-
-                % Launch
-                SelectSleepState_GUI();
-            else
-                try figure(hFig(1)); catch, end
-            end
-
-            obj.selector_is_open = true;
-            obj.start_polling();
-        end
-
-        function start_polling(obj)
-            if isempty(obj.PollTimer) || ~isvalid(obj.PollTimer)
-                obj.PollTimer = timer('ExecutionMode', 'fixedRate', ...
-                    'Period', 0.1, ...
-                    'TimerFcn', @obj.poll_selector_callback);
-            end
-            if strcmp(obj.PollTimer.Running, 'off')
-                start(obj.PollTimer);
-            end
-        end
-
-        function stop_polling(obj)
-            if ~isempty(obj.PollTimer) && isvalid(obj.PollTimer)
-                stop(obj.PollTimer);
-                delete(obj.PollTimer);
-            end
-            obj.PollTimer = [];
-        end
-
-        function poll_selector_callback(obj, ~, ~)
-            global buttonState ButtonValue closeButtonState
-
-            if closeButtonState == 1
-                obj.close_selector_only();
-                return;
-            end
-
-            if buttonState == 1
-                switch ButtonValue
-                    case 1, label = 'Not Sleep';
-                    case 2, label = 'NREM Sleep';
-                    case 3, label = 'REM Sleep';
-                    otherwise, label = '';
-                end
-
-                if ~isempty(label)
-                    obj.score_current_bin(label);
-                end
-
-                % Reset
-                buttonState = 0;
-                ButtonValue = 0;
-            end
-        end
-
-        function close_selector_only(obj)
-            % Close selector and stop polling
-            obj.stop_polling();
-
-            hFig = findall(0, 'Type', 'figure', '-regexp', 'Name', 'Select.*Sleep|Sleep.*State');
-            if ~isempty(hFig)
-                delete(hFig);
-            end
-
-            obj.selector_is_open = false;
         end
 
         function panel_action(obj, action)
@@ -539,17 +490,21 @@ classdef sleepscoring_gui < handle
 
         function key_press_handler(obj, ~, event)
             switch event.Key
-                case 'n', obj.score_current_bin('Not Sleep');
-                case 'r', obj.score_current_bin('NREM Sleep');
-                case 'w', obj.score_current_bin('REM Sleep');
-                case 'k', obj.advance_bin(1);
-                case 'j', obj.advance_bin(-1);
+                % Not Sleep
+                case {'a', '1'}, obj.score_current_bin('Not Sleep');
+                    % NREM Sleep
+                case {'n', '2'}, obj.score_current_bin('NREM Sleep');
+                    % REM Sleep
+                case {'r', '3'}, obj.score_current_bin('REM Sleep');
+
+                    % Navigation
+                case {'k', 'rightarrow'}, obj.advance_bin(1);
+                case {'j', 'leftarrow'}, obj.advance_bin(-1);
             end
         end
 
         function close_request_handler(obj, ~, ~)
             % Clean up
-            obj.close_selector_only();
             try delete(obj.GUI.cpFig); catch, end
             try delete(obj.figHandle); catch, end
 
@@ -560,6 +515,6 @@ classdef sleepscoring_gui < handle
         function t = get_results(obj)
             t = table(obj.State.behavioralState, 'VariableNames', {'behavState'});
         end
-
     end
+
 end

@@ -29,17 +29,10 @@ classdef peripheral_mdf < mdfExtractLoader
                 fprintf('Created directory: %s\n', peripheral_dir);
             end
             obj.dir_struct.peripheral = peripheral_dir;
+            obj.raw_analog.info = obj.loadanalog_info;
         end
 
-        function obj = loadraw_analogdata(obj)
-            % Load analog data using inherited loadanalog method
-            % Stores result in raw_analog
-            try
-                obj.raw_analog = obj.loadanalog();
-            catch ME
-                warning(ME.identifier, 'Failed to load analog data: %s', ME.message);
-            end
-        end
+
 
         function whisker = loadwhisker(obj)
             % Load eye and whisker videos using io_loadavi
