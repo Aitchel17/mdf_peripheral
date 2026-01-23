@@ -437,9 +437,14 @@ classdef sleepscoring_gui < handle
             % Draw colored patches for sleep states on Force axis
             ax = obj.Axes.force;
 
-            % Delete old patches
-            h = findobj(ax, 'Tag', 'StatePatch');
-            delete(h);
+            % Delete old patches? NO. We reuse them.
+            % But we still need to hide patches that shouldn't be visible if they were previously?
+            % Actually, we only iterate over visible bins here.
+            % What about patches that move OUT of view?
+            % Since patches are fixed in time (x-position), they just scroll out of view naturally.
+            % We don't need to manually hide them unless we want to save rendering of off-screen objects?
+            % MATLAB handles off-screen culling pretty well, but we can set Visible='off' if we really want.
+            % For now, just updating visible ones is efficient.
 
             % Colors (matching add_sleep_bands)
             cNot=[0.8 0.8 0.8]; cNREM=[0.3 0.7 1]; cREM=[1 0.4 0.4];
@@ -454,25 +459,45 @@ classdef sleepscoring_gui < handle
             hold(ax, 'on');
             for b = bStart:bEnd
                 state = obj.State.behavioralState(b);
-                if state == obj.StateCodes.Unscored, continue; end
 
-                switch state
-                    case obj.StateCodes.NotSleep, c=cNot;
-                    case obj.StateCodes.NREM, c=cNREM;
-                    case obj.StateCodes.REM, c=cREM;
-                    otherwise, continue;
+                % Determine color
+                if state == obj.StateCodes.Unscored
+                    c = 'none'; % Don't draw or make invisible
+                else
+                    switch state
+                        case obj.StateCodes.NotSleep, c=cNot;
+                        case obj.StateCodes.NREM, c=cNREM;
+                        case obj.StateCodes.REM, c=cREM;
+                        otherwise, c='none';
+                    end
                 end
 
-                t1 = (b-1) * obj.Data.binWidth_s;
-                t2 = b * obj.Data.binWidth_s;
+                % Retrieve persistent handle
+                % Check if GUI struct has BinPatches (safeguard for hot-reload)
+                if ~isfield(obj.GUI, 'BinPatches') || length(obj.GUI.BinPatches) < obj.Data.NBins
+                    obj.GUI.BinPatches = gobjects(obj.Data.NBins, 1);
+                end
 
-                % Constrain to view (optional, but cleaner)
-                t1 = max(t1, xStart);
-                t2 = min(t2, xEnd);
-                if t1 >= t2, continue; end
+                hPatch = obj.GUI.BinPatches(b);
 
-                patch(ax, [t1 t2 t2 t1], [yLow yLow yHigh yHigh], c, ...
-                    'FaceAlpha', 0.4, 'EdgeColor', 'none', 'Tag', 'StatePatch', 'HitTest', 'off');
+                if isgraphics(hPatch) && isvalid(hPatch)
+                    % Patch exists: update if needed
+                    if strcmp(c, 'none')
+                        set(hPatch, 'Visible', 'off');
+                    else
+                        set(hPatch, 'Visible', 'on', 'FaceColor', c, 'YData', [yLow yLow yHigh yHigh]);
+                    end
+                else
+                    % Patch doesn't exist: create if visible
+                    if ~strcmp(c, 'none')
+                        t1 = (b-1) * obj.Data.binWidth_s;
+                        t2 = b * obj.Data.binWidth_s;
+
+                        % Create new patch
+                        obj.GUI.BinPatches(b) = patch(ax, [t1 t2 t2 t1], [yLow yLow yHigh yHigh], c, ...
+                            'FaceAlpha', 0.4, 'EdgeColor', 'none', 'Tag', 'StatePatch', 'HitTest', 'off');
+                    end
+                end
             end
         end
 

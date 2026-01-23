@@ -77,6 +77,8 @@ session_duration = str2double(peripheral_session.info.fcount)*str2double(periphe
 sleep_score = sleepscoring_gui(session_duration);
 sleep_score.setup_figure(figStruct)
 sleep_score.setup_control_panel();
+sleep_score.goto_bin(1)
+
 %%
 uiwait(sleep_score.figHandle);
 
