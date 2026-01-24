@@ -7,12 +7,14 @@ classdef sleepscoring_gui < handle
     properties (Access = public)
         Data
         State
+        StateDefs % Array of structs defining states
     end
 
     properties (Hidden)
         Axes
         figHandle
         GUI
+        stateMap % Map for fast lookup code -> index in StateDefs
     end
 
     properties (Access = private)
@@ -30,7 +32,7 @@ classdef sleepscoring_gui < handle
     end
 
     properties (Constant)
-        % Numeric State Codes
+        % Numeric State Codes (Kept for backward compat / fast access if needed, but discouraged)
         StateCodes = struct('Unscored', 0, 'NotSleep', 1, 'NREM', 2, 'REM', 3, 'Drowsy', 4);
     end
 
@@ -57,6 +59,23 @@ classdef sleepscoring_gui < handle
             obj.State.currentBinIdx = 1;
             obj.State.binsToScore = 1:NBins;
             obj.State.windows = [];
+
+            % Initialize Centralized State Definitions
+            % Order matters for UI Button Grid (Row major: 1,2, 3,4...) if 2 columns
+            % Name: Display Name
+            % Code: Numeric Code
+            % Color: RGB
+            % Keys: Key shortcuts (cell of strings)
+            % Field: Result struct field name
+            obj.StateDefs = [
+                struct('Name','Not Sleep',  'Code',1, 'Color',obj.black, 'Keys',{{'a','1'}}, 'Field','AwakeTimes'), ...
+                struct('Name','Drowsy',     'Code',4, 'Color',obj.green, 'Keys',{{'d','4'}}, 'Field','DrowsyTimes'), ...
+                struct('Name','NREM Sleep', 'Code',2, 'Color',obj.blue,  'Keys',{{'n','2'}}, 'Field','NREMTimes'), ...
+                struct('Name','REM Sleep',  'Code',3, 'Color',obj.red,   'Keys',{{'r','3'}}, 'Field','REMTimes')
+                ];
+
+            % Map for lookup
+            obj.stateMap = dictionary([obj.StateDefs.Code], 1:length(obj.StateDefs));
         end
 
         function setup_figure(obj, figStruct)
@@ -93,9 +112,34 @@ classdef sleepscoring_gui < handle
             obj.Axes.pupil           = copyAndPos(figStruct.pupil, 5);
             obj.Axes.spectrogram     = copyAndPos(figStruct.spectrogram, 6:8);
 
-            % Link axes
+            % Link axes (Include Spectrogram again for virtual cropping)
             linkaxes([obj.Axes.force, obj.Axes.emg_power, obj.Axes.rawemg, ...
-                obj.Axes.whisker], 'x');
+                obj.Axes.whisker, obj.Axes.pupil, obj.Axes.spectrogram], 'x');
+
+            % --- Spectrogram Virtual Cropping (Performance) ---
+            % Find the graphic object (Image or Surface)
+            hSpec = findobj(obj.Axes.spectrogram, 'Type', 'image');
+            if isempty(hSpec)
+                hSpec = findobj(obj.Axes.spectrogram, 'Type', 'surface');
+            end
+
+            if ~isempty(hSpec)
+                % Store Full Data Reference
+                obj.Data.Spec.CData = hSpec.CData;
+                obj.Data.Spec.XData = hSpec.XData;
+                obj.Data.Spec.YData = hSpec.YData;
+                if isprop(hSpec, 'ZData')
+                    obj.Data.Spec.ZData = hSpec.ZData;
+                end
+                obj.Data.Spec.Handle = hSpec;
+
+                % Setup Listener on Master Axis (Force) XLim
+                % Use 'PostSet' to update after limits change
+                addlistener(obj.Axes.force, 'XLim', 'PostSet', @(~,~) obj.update_spectrogram_crop());
+
+                % Initial Crop
+                obj.update_spectrogram_crop();
+            end
 
             % Scoring axes references
             obj.Axes.scoring_emg = obj.Axes.emg_power;
@@ -151,40 +195,44 @@ classdef sleepscoring_gui < handle
             % --- Panel 1: Sleep State Selection ---
             StatePanel = uipanel(MainLayout, 'Title', 'Sleep State');
             StatePanel.Layout.Row = 1;
-            StateLayout = uigridlayout(StatePanel, [2,2]);
-            StateLayout.ColumnWidth = {'1x', '1x'};
-            StateLayout.RowHeight = {'1x', '1x'};
+
+            % Dynamic Grid Layout
+            numStates = length(obj.StateDefs);
+            nCols = 2;
+            nRows = ceil(numStates / nCols);
+
+            StateLayout = uigridlayout(StatePanel, [nRows, nCols]);
+            StateLayout.ColumnWidth = repmat({'1x'}, 1, nCols);
+            StateLayout.RowHeight = repmat({'1x'}, 1, nRows);
             StateLayout.Padding = [5 5 5 5];
 
-            % State Buttons
+            % Generate Buttons from StateDefs
+            for i = 1:numStates
+                def = obj.StateDefs(i);
 
-            % Row 1, Col 1: Not Sleep (Black)
-            btn = uibutton(StateLayout, 'Text', 'Not Sleep (A)', ...
-                'BackgroundColor', obj.black, 'FontColor', obj.white, ...
-                'FontWeight', 'bold', 'FontSize', 14, ...
-                'ButtonPushedFcn', @(~,~) obj.handle_event('Button', 'Not Sleep'));
-            btn.Layout.Row = 1; btn.Layout.Column = 1;
+                % Create Button Text (e.g., "Not Sleep (A)")
+                % Use first key as shortcut hint if available
+                if ~isempty(def.Keys)
+                    shortcut = upper(def.Keys{1}); % Access the first key in the cell array
+                    btnText = sprintf('%s (%s)', def.Name, shortcut);
+                else
+                    btnText = def.Name;
+                end
 
-            % Row 1, Col 2: Drowsy (Green)
-            btn = uibutton(StateLayout, 'Text', 'Drowsy (D)', ...
-                'BackgroundColor', obj.green, 'FontColor', obj.white, ...
-                'FontWeight', 'bold', 'FontSize', 14, ...
-                'ButtonPushedFcn', @(~,~) obj.handle_event('Button', 'Drowsy'));
-            btn.Layout.Row = 1; btn.Layout.Column = 2;
+                % Callback: trigger by Name
+                cmd = def.Name;
 
-            % Row 2, Col 1: NREM Sleep (Blue)
-            btn = uibutton(StateLayout, 'Text', 'NREM Sleep (N)', ...
-                'BackgroundColor', obj.blue, 'FontColor', obj.white, ...
-                'FontWeight', 'bold', 'FontSize', 14, ...
-                'ButtonPushedFcn', @(~,~) obj.handle_event('Button', 'NREM Sleep'));
-            btn.Layout.Row = 2; btn.Layout.Column = 1;
+                btn = uibutton(StateLayout, 'Text', btnText, ...
+                    'BackgroundColor', def.Color, 'FontColor', obj.white, ...
+                    'FontWeight', 'bold', 'FontSize', 14, ...
+                    'ButtonPushedFcn', @(~,~) obj.handle_event('Button', cmd));
 
-            % Row 2, Col 2: REM Sleep (Red)
-            btn = uibutton(StateLayout, 'Text', 'REM Sleep (R)', ...
-                'BackgroundColor', obj.red, 'FontColor', obj.white, ...
-                'FontWeight', 'bold', 'FontSize', 14, ...
-                'ButtonPushedFcn', @(~,~) obj.handle_event('Button', 'REM Sleep'));
-            btn.Layout.Row = 2; btn.Layout.Column = 2;
+                % Position (Row-Major)
+                rowIdx = ceil(i / nCols);
+                colIdx = mod(i-1, nCols) + 1;
+                btn.Layout.Row = rowIdx;
+                btn.Layout.Column = colIdx;
+            end
 
             % --- Panel 2: Tools & Navigation ---
             ToolsPanel = uipanel(MainLayout, 'Title', 'Tools & Nav');
@@ -198,14 +246,10 @@ classdef sleepscoring_gui < handle
             % {Action, Color, Tag}
             btnConfig = {
                 'Continue', obj.blue, 'continue';
-                'End here', obj.red, 'end';
                 'Finish window', obj.orange, 'finishwin';
                 'View remainder', obj.black, 'view';
                 'Bulk label (plot)', obj.green, 'bulk_plot';
-                'Bulk label (time)', obj.cyan, 'bulk_time';
                 'Jump in plot', obj.purple, 'jump_plot';
-                'Plot scores', obj.purpleBlu, 'plot_scores';
-                'Jump in time', obj.purpleBlu, 'jump_time';
                 };
 
             for i = 1:size(btnConfig,1)
@@ -238,12 +282,17 @@ classdef sleepscoring_gui < handle
 
             for i=1:numel(states)
                 if states(i) == obj.StateCodes.Unscored, continue; end
-                switch states(i)
-                    case obj.StateCodes.NotSleep, c=cNot;
-                    case obj.StateCodes.NREM, c=cNREM;
-                    case obj.StateCodes.REM, c=cREM;
-                    case obj.StateCodes.Drowsy, c=obj.green;
-                    otherwise, c=[1 1 1];
+
+                % Determine color (Dynamic Lookup)
+                c=[1 1 1];
+                if states(i) ~= 0
+                    % Fallback / Linear Search
+                    for k = 1:length(obj.StateDefs)
+                        if obj.StateDefs(k).Code == states(i)
+                            c = obj.StateDefs(k).Color;
+                            break;
+                        end
+                    end
                 end
                 t1 = edges(i); t2 = edges(i+1);
                 patch(ax, [t1 t2 t2 t1], [0 0 1 1], c, 'EdgeColor','none');
@@ -275,7 +324,7 @@ classdef sleepscoring_gui < handle
             x2 = min(obj.Data.allDur_s, x1+winLen);
 
             xlim(obj.Axes.scoring_emg,[x1 x2]);
-            % xlim(obj.Axes.scoring_spec,[x1 x2]); % Linked
+            xlim(obj.Axes.scoring_spec,[x1 x2]); % Manually update unlinked axis
 
             % Update state visualization on Force axis
             obj.update_state_visualization(x1, x2);
@@ -316,7 +365,6 @@ classdef sleepscoring_gui < handle
                 obj.goto_bin(newIdx);
             else
                 disp('End of file reached.');
-                % Maybe close?
             end
         end
 
@@ -331,27 +379,22 @@ classdef sleepscoring_gui < handle
             betweenIdx = []; % Logic simplified
         end
 
-        function [jumpBi, betweenIdx] = pick_jump_time(obj)
-            defaultT = num2str(obj.State.currentBinIdx * obj.Data.binWidth_s);
-            answer = inputdlg('Jump start time (seconds):','Jump',[1 35],{defaultT});
-            if isempty(answer), jumpBi=[]; betweenIdx=[]; return; end
-            t = str2double(answer{1});
-            if isnan(t), jumpBi=[]; betweenIdx=[]; return; end
-            targetBin = max(1, ceil(t / obj.Data.binWidth_s));
-            jumpBi = targetBin;
-            betweenIdx = [];
-        end
+
 
         function [ok, selLabel, s, e] = bulk_label_plot_dialog(obj)
             ok = false; selLabel = ''; s = []; e = [];
+
+            % Generate List
+            names = {obj.StateDefs.Name};
+            codes = [obj.StateDefs.Code];
+
             [indx, tf] = listdlg('PromptString','Choose label:', ...
                 'SelectionMode','single', ...
-                'ListString',{'Not Sleep','NREM Sleep','REM Sleep', 'Drowsy'}, ...
+                'ListString', names, ...
                 'InitialValue',1,'ListSize',[180 90]);
             if ~tf, return; end
-            % Map selection to numeric code
-            possibleCodes = [obj.StateCodes.NotSleep, obj.StateCodes.NREM, obj.StateCodes.REM, obj.StateCodes.Drowsy];
-            selLabel = possibleCodes(indx);
+
+            selLabel = codes(indx);
 
             figure(obj.figHandle);
             [x1,~,~] = ginput(1); if isempty(x1), return; end
@@ -362,15 +405,22 @@ classdef sleepscoring_gui < handle
 
         function [ok, selLabel, s, e] = bulk_label_time_dialog(obj)
             % Impl similar to plot dialog but with inputdlg
-            ok = false; selLabel = ''; s = []; e = [];
+            ok = false;
+            selLabel = '';
+            s = [];
+            e = [];
+
+            % Generate List
+            names = {obj.StateDefs.Name};
+            codes = [obj.StateDefs.Code];
+
             [indx, tf] = listdlg('PromptString','Choose label:', ...
                 'SelectionMode','single', ...
-                'ListString',{'Not Sleep','NREM Sleep','REM Sleep', 'Drowsy'}, ...
+                'ListString', names, ...
                 'InitialValue',1,'ListSize',[180 90]);
             if ~tf, return; end
-            % Map selection to numeric code
-            possibleCodes = [obj.StateCodes.NotSleep, obj.StateCodes.NREM, obj.StateCodes.REM, obj.StateCodes.Drowsy];
-            selLabel = possibleCodes(indx);
+
+            selLabel = codes(indx);
 
             answ = inputdlg({'Start time (s):','End time (s):'}, ...
                 'Bulk label (time)',[1 28], {'0', num2str(obj.Data.allDur_s)});
@@ -424,47 +474,104 @@ classdef sleepscoring_gui < handle
             w = 500;
             x1 = max(0, cx-w/2); x2 = min(obj.Data.allDur_s, cx+w/2);
             xlim(obj.Axes.scoring_emg, [x1 x2]);
+            obj.sync_spectrogram_view();
         end
 
+
+        function update_spectrogram_crop(obj)
+            % Virtual Cropping Callback
+            try
+                if ~isfield(obj.Data, 'Spec') || isempty(obj.Data.Spec.Handle) || ~isvalid(obj.Data.Spec.Handle)
+                    return;
+                end
+
+                % Get current view limits
+                xl = xlim(obj.Axes.force);
+                xStart = xl(1); xEnd = xl(2);
+
+                % Filter Data
+                % Assuming XData is a vector (imagesc/pcolor usually)
+                fullX = obj.Data.Spec.XData;
+
+                % Optimization: buffer to prevent jitter
+                buffer = (xEnd - xStart) * 0.1;
+                xStartB = xStart - buffer;
+                xEndB   = xEnd + buffer;
+
+                % Find indices
+                if isvector(fullX)
+                    mask = fullX >= xStartB & fullX <= xEndB;
+                    if ~any(mask)
+                        % fallback if zoomed way out or empty
+                        return;
+                    end
+
+                    % Extract Slice
+                    newX = fullX(mask);
+                    % Check CData orientation
+                    % Usually [Freq x Time] for spectrogram
+                    % So we slice the COLUMNS
+                    fullC = obj.Data.Spec.CData;
+
+                    if size(fullC, 2) == length(fullX)
+                        newC = fullC(:, mask);
+                        if isfield(obj.Data.Spec, 'ZData') && ~isempty(obj.Data.Spec.ZData)
+                            newZ = obj.Data.Spec.ZData(:, mask);
+                            set(obj.Data.Spec.Handle, 'XData', newX, 'CData', newC, 'ZData', newZ);
+                        else
+                            set(obj.Data.Spec.Handle, 'XData', newX, 'CData', newC);
+                        end
+                    elseif size(fullC, 1) == length(fullX)
+                        newC = fullC(mask, :);
+                        if isfield(obj.Data.Spec, 'ZData') && ~isempty(obj.Data.Spec.ZData)
+                            newZ = obj.Data.Spec.ZData(mask, :);
+                            set(obj.Data.Spec.Handle, 'XData', newX, 'CData', newC, 'ZData', newZ);
+                        else
+                            set(obj.Data.Spec.Handle, 'XData', newX, 'CData', newC);
+                        end
+                    else
+                        % Dimension mismatch or different structure
+                        return;
+                    end
+                end
+            catch
+                % suppress errors during close
+            end
+        end
 
         function update_state_visualization(obj, xStart, xEnd)
             % Draw colored patches for sleep states on Force axis
             ax = obj.Axes.force;
-
-            % Delete old patches? NO. We reuse them.
-            % But we still need to hide patches that shouldn't be visible if they were previously?
-            % Actually, we only iterate over visible bins here.
-            % What about patches that move OUT of view?
-            % Since patches are fixed in time (x-position), they just scroll out of view naturally.
-            % We don't need to manually hide them unless we want to save rendering of off-screen objects?
-            % MATLAB handles off-screen culling pretty well, but we can set Visible='off' if we really want.
-            % For now, just updating visible ones is efficient.
-
-            % Colors (matching add_sleep_bands)
-            cNot=[0.8 0.8 0.8]; cNREM=[0.3 0.7 1]; cREM=[1 0.4 0.4];
-
             % Determine bin range
             bStart = max(1, floor(xStart / obj.Data.binWidth_s) + 1);
             bEnd   = min(obj.Data.NBins, ceil(xEnd / obj.Data.binWidth_s));
-
             yl = get(ax, 'YLim');
             yLow = yl(1); yHigh = yl(2);
+            countUpdated = 0;
+            countCreated = 0;
 
             hold(ax, 'on');
             for b = bStart:bEnd
                 state = obj.State.behavioralState(b);
-
-                % Determine color
-                if state == obj.StateCodes.Unscored
-                    c = 'none'; % Don't draw or make invisible
-                else
-                    switch state
-                        case obj.StateCodes.NotSleep, c=cNot;
-                        case obj.StateCodes.NREM, c=cNREM;
-                        case obj.StateCodes.REM, c=cREM;
-                        case obj.StateCodes.Drowsy, c=obj.green;
-                        otherwise, c='none';
-                    end % Recycle green
+                % Determine color (Dynamic Lookup)
+                c = 'none';
+                if state ~= 0 % 0 is Unscored/None
+                    % Find matching def
+                    % Optimization: Use stateMap if available, else Linear Search
+                    if isfield(obj.stateMap, 'entries') % if it's a dictionary (R2022b+)
+                        if isKey(obj.stateMap, state)
+                            idx = obj.stateMap(state);
+                            c = obj.StateDefs(idx).Color;
+                        end
+                    else
+                        % Fallback / Linear Search
+                        for i = 1:length(obj.StateDefs)
+                            if obj.StateDefs(i).Code == state
+                                c = obj.StateDefs(i).Color;
+                                break;
+                            end
+                        end
+                    end
                 end
 
                 % Retrieve persistent handle
@@ -481,6 +588,7 @@ classdef sleepscoring_gui < handle
                         set(hPatch, 'Visible', 'off');
                     else
                         set(hPatch, 'Visible', 'on', 'FaceColor', c, 'YData', [yLow yLow yHigh yHigh]);
+                        countUpdated = countUpdated + 1;
                     end
                 else
                     % Patch doesn't exist: create if visible
@@ -491,8 +599,12 @@ classdef sleepscoring_gui < handle
                         % Create new patch
                         obj.GUI.BinPatches(b) = patch(ax, [t1 t2 t2 t1], [yLow yLow yHigh yHigh], c, ...
                             'FaceAlpha', 0.4, 'EdgeColor', 'none', 'Tag', 'StatePatch', 'HitTest', 'off');
+                        countCreated = countCreated + 1;
                     end
                 end
+            end
+            if countUpdated > 0 || countCreated > 0
+                fprintf('Viz: Updated %d, Created %d patches.\n', countUpdated, countCreated);
             end
         end
 
@@ -504,12 +616,7 @@ classdef sleepscoring_gui < handle
 
             % Create result struct
             results.Table = table(numericState, 'VariableNames', {'behavState'});
-
-            % Backward compatibility fields (if user code accesses .behavState directly on the return value)
-            % If the return value was a table, .behavState works.
-            % If it's a struct, we need to add the field.
             results.behavState = numericState;
-
             % Calculate start/end times for each state
             binWidth = obj.Data.binWidth_s;
             % Generate time bounds
@@ -524,11 +631,16 @@ classdef sleepscoring_gui < handle
                     times = [s, e];
                 end
             end
-            results.AwakeTimes = get_state_times(obj.StateCodes.NotSleep);
-            results.NREMTimes = get_state_times(obj.StateCodes.NREM);
-            results.REMTimes = get_state_times(obj.StateCodes.REM);
-            results.DrowsyTimes = get_state_times(obj.StateCodes.Drowsy);
-            results.UnscoredTimes = get_state_times(obj.StateCodes.Unscored);
+
+            % Dynamic Results Generation
+            for i = 1:length(obj.StateDefs)
+                def = obj.StateDefs(i);
+                if ~isempty(def.Field)
+                    results.(def.Field) = get_state_times(def.Code);
+                end
+            end
+            % Keep Unscored manually if not in StateDefs (often not needed in output, but good for completeness)
+            results.UnscoredTimes = get_state_times(0);
         end
     end
 
@@ -554,22 +666,35 @@ classdef sleepscoring_gui < handle
             % Normalize actions
             action = '';
 
+            % Dynamic Lookup in StateDefs
             if strcmp(source, 'Key')
+                % check navigation keys first
                 switch eventData
-                    case {'a', '1'}, action = obj.StateCodes.NotSleep;
-                    case {'n', '2'}, action = obj.StateCodes.NREM;
-                    case {'r', '3'}, action = obj.StateCodes.REM;
-                    case {'d', '4'}, action = obj.StateCodes.Drowsy;
                     case {'k', 'rightarrow'}, action = 'next_bin';
                     case {'j', 'leftarrow'}, action = 'prev_bin';
+                    otherwise
+                        % Check State Keys
+                        for i = 1:length(obj.StateDefs)
+                            if ismember(eventData, obj.StateDefs(i).Keys)
+                                action = obj.StateDefs(i).Code;
+                                break;
+                            end
+                        end
                 end
             elseif strcmp(source, 'Button')
-                switch eventData
-                    case 'Not Sleep', action = obj.StateCodes.NotSleep;
-                    case 'NREM Sleep', action = obj.StateCodes.NREM;
-                    case 'REM Sleep', action = obj.StateCodes.REM;
-                    case 'Drowsy', action = obj.StateCodes.Drowsy;
-                    otherwise, action = eventData;
+                % Check if eventData (Command) matches a State Name
+                found = false;
+                for i = 1:length(obj.StateDefs)
+                    if strcmp(eventData, obj.StateDefs(i).Name)
+                        action = obj.StateDefs(i).Code;
+                        found = true;
+                        break;
+                    end
+                end
+
+                if ~found
+                    % Pass through other commands (next_bin, etc.)
+                    action = eventData;
                 end
             end
 
@@ -581,35 +706,25 @@ classdef sleepscoring_gui < handle
             else
                 switch action
                     % Navigation
-
                     case 'next_bin'
                         obj.advance_bin(1);
                     case 'prev_bin'
                         obj.advance_bin(-1);
                     case 'continue'
                         % Placeholder
-
                     case 'end'
-                        obj.close_request_handler();
-
-                        % Tools
+                        % Removed
                     case 'view'
+                        disp('show overview')
                         % View remainder logic
-                        % (Moved from panel_action)
-                        try pan(obj.figHandle,'off'); zoom(obj.figHandle,'off'); catch, end
-                        xStart = (obj.State.currentBinIdx)*obj.Data.binWidth_s;
-                        xlim(obj.Axes.scoring_emg,[xStart obj.Data.allDur_s]);
+                        pan(obj.figHandle,'off');
+                        zoom(obj.figHandle,'off');
+
+                        xlim(obj.Axes.force,[0 obj.Data.allDur_s]);
+                        drawnow; % Ensure limits are updated
+
+                        % Show patches
                         obj.enable_click_zoom(true);
-
-                        ch = questdlg('Viewing remainder. Next?','View','Continue','End here','Jump in plot','Continue');
-
-                        obj.enable_click_zoom(false);
-
-                        if strcmp(ch,'End here')
-                            obj.close_request_handler();
-                        elseif strcmp(ch,'Jump in plot')
-                            obj.handle_event('Button', 'jump_plot');
-                        end
 
                     case 'jump_plot'
                         [targetBi, betIdx] = obj.pick_jump_plot();
@@ -619,20 +734,8 @@ classdef sleepscoring_gui < handle
                             end
                             obj.goto_bin(targetBi);
                         end
-                    case 'jump_time'
-                        [targetBi, betIdx] = obj.pick_jump_time();
-                        if ~isempty(targetBi)
-                            obj.goto_bin(targetBi);
-                        end
                     case 'bulk_plot'
                         [ok, lab, s, e] = obj.bulk_label_plot_dialog();
-                        if ok
-                            [~, bEnd] = obj.apply_bulk_label(s, e, lab);
-                            obj.mark_bulk_region(s, e);
-                            obj.goto_bin(bEnd + 1);
-                        end
-                    case 'bulk_time'
-                        [ok, lab, s, e] = obj.bulk_label_time_dialog();
                         if ok
                             [~, bEnd] = obj.apply_bulk_label(s, e, lab);
                             obj.mark_bulk_region(s, e);
@@ -644,8 +747,6 @@ classdef sleepscoring_gui < handle
                         [~, bEnd] = obj.apply_bulk_label(sW, eW, obj.StateCodes.NotSleep, true);
 
                         obj.goto_bin(bEnd + 1);
-                    case 'plot_scores'
-                        obj.plot_scores_overview();
                 end
             end
         end
