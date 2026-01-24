@@ -245,7 +245,6 @@ classdef sleepscoring_gui < handle
             % Tools Configuration
             % {Action, Color, Tag}
             btnConfig = {
-                'Continue', obj.blue, 'continue';
                 'Finish window', obj.orange, 'finishwin';
                 'View remainder', obj.black, 'view';
                 'Bulk label (plot)', obj.green, 'bulk_plot';
@@ -269,35 +268,6 @@ classdef sleepscoring_gui < handle
                 btn.Layout.Row = rowIdx;
                 btn.Layout.Column = colIdx;
             end
-        end
-
-        function plot_scores_overview(obj)
-            figure('Name', 'Sleep Score Overview');
-            ax = axes();
-            % Inline add_sleep_bands logic
-            hold(ax, 'on');
-            cNot=[0.8 0.8 0.8]; cNREM=[0.3 0.7 1]; cREM=[1 0.4 0.4];
-            states = obj.State.behavioralState;
-            edges = 0:obj.Data.binWidth_s:obj.Data.allDur_s;
-
-            for i=1:numel(states)
-                if states(i) == obj.StateCodes.Unscored, continue; end
-
-                % Determine color (Dynamic Lookup)
-                c=[1 1 1];
-                if states(i) ~= 0
-                    % Fallback / Linear Search
-                    for k = 1:length(obj.StateDefs)
-                        if obj.StateDefs(k).Code == states(i)
-                            c = obj.StateDefs(k).Color;
-                            break;
-                        end
-                    end
-                end
-                t1 = edges(i); t2 = edges(i+1);
-                patch(ax, [t1 t2 t2 t1], [0 0 1 1], c, 'EdgeColor','none');
-            end
-            title('Score Overview (Bands)');
         end
     end
 
@@ -505,14 +475,9 @@ classdef sleepscoring_gui < handle
                         % fallback if zoomed way out or empty
                         return;
                     end
-
                     % Extract Slice
                     newX = fullX(mask);
-                    % Check CData orientation
-                    % Usually [Freq x Time] for spectrogram
-                    % So we slice the COLUMNS
                     fullC = obj.Data.Spec.CData;
-
                     if size(fullC, 2) == length(fullX)
                         newC = fullC(:, mask);
                         if isfield(obj.Data.Spec, 'ZData') && ~isempty(obj.Data.Spec.ZData)
@@ -608,8 +573,6 @@ classdef sleepscoring_gui < handle
             end
         end
 
-
-
         function results = get_results(obj)
             % Create table with numeric state and string representation
             numericState = obj.State.behavioralState;
@@ -643,7 +606,6 @@ classdef sleepscoring_gui < handle
             results.UnscoredTimes = get_state_times(0);
         end
     end
-
     % Methods for events
     methods (Access = private)
 
@@ -710,10 +672,6 @@ classdef sleepscoring_gui < handle
                         obj.advance_bin(1);
                     case 'prev_bin'
                         obj.advance_bin(-1);
-                    case 'continue'
-                        % Placeholder
-                    case 'end'
-                        % Removed
                     case 'view'
                         disp('show overview')
                         % View remainder logic
@@ -722,7 +680,6 @@ classdef sleepscoring_gui < handle
 
                         xlim(obj.Axes.force,[0 obj.Data.allDur_s]);
                         drawnow; % Ensure limits are updated
-
                         % Show patches
                         obj.enable_click_zoom(true);
 
