@@ -170,6 +170,36 @@ classdef analysis_analog < handle
             save(save_path, 'primary_analog');
             fprintf('analysis_analog object saved to: %s\n', save_path);
         end
+
+        function get_ecogbaseline(obj,awake_array,binwidth)
+            %% Data
+            T = obj.ecog.ecogspectrum.T;
+            S = obj.ecog.ecogspectrum.S;
+            ECoG_base5s_awake_before = awake_array(:,1);
+            ECoG_base5s_awake_after = awake_array(:,2);
+            %% 
+            idx_before = zeros(size(ECoG_base5s_awake_before));
+            idx_after = zeros(size(ECoG_base5s_awake_after));
+            for i = 1:size(ECoG_base5s_awake_before,1)
+                dist_5s_before = abs(T - ECoG_base5s_awake_before(i));
+                dist_5s_after = abs(T - ECoG_base5s_awake_after(i));
+                [~,bin_idx_pre] = min(dist_5s_before);
+                [~,bin_idx_post] = min(dist_5s_after);
+                idx_before(i) = bin_idx_pre;
+                idx_after(i) = bin_idx_post-1;
+            end
+            %% 
+            baseline_S = [];
+            for i = 1: size(idx_after,1)
+                baseline_S = cat(1,baseline_S, S(idx_before(i):idx_after(i),:));
+            end
+            denominator_S = mean(baseline_S,1);
+            obj.ecog.ecogspectrum.awake_S = baseline_S';
+            obj.ecog.ecogspectrum.baseline_S = log(S./denominator_S)';
+            
+        end
+
+
     end
 
     methods (Static)

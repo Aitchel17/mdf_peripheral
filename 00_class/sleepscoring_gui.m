@@ -31,9 +31,7 @@ classdef sleepscoring_gui < handle
 
     properties (Constant)
         % Numeric State Codes
-        StateCodes = struct('Unscored', 0, 'NotSleep', 1, 'NREM', 2, 'REM', 3);
-        % Names for display/export (Indexed by Code+1)
-        StateNames = {'Unscored', 'Not Sleep', 'NREM Sleep', 'REM Sleep'};
+        StateCodes = struct('Unscored', 0, 'NotSleep', 1, 'NREM', 2, 'REM', 3, 'Drowsy', 4);
     end
 
     events
@@ -88,33 +86,16 @@ classdef sleepscoring_gui < handle
                 set(axNew, 'Position', pos);
             end
 
-            obj.Axes.force   = copyAndPos(figStruct.force, 1);
+            obj.Axes.force           = copyAndPos(figStruct.force, 1);
             obj.Axes.emg_power     = copyAndPos(figStruct.emg_power, 2);
-            obj.Axes.rawemg  = copyAndPos(figStruct.rawemg, 3);
-            obj.Axes.whisker = copyAndPos(figStruct.whisker, 4);
-
-            if isfield(figStruct, 'pupil') && ~isempty(figStruct.pupil)
-                obj.Axes.pupil = copyAndPos(figStruct.pupil, 5);
-            else
-                obj.Axes.pupil = subplot(8,1,5,'Parent',obj.figHandle);
-                axis(obj.Axes.pupil, 'off');
-                text(obj.Axes.pupil, 0.5, 0.5, 'Pupil not provided', 'HorizontalAlignment','center');
-            end
-
-            if isempty(figStruct.spectrogram) || isempty(figStruct.spectrogram.ax)
-                obj.Axes.spectrogram = subplot(8, 1, 6:8, 'Parent', obj.figHandle);
-                text(obj.Axes.spectrogram, 0.5, 0.5, 'Spectrogram unavailable', 'HorizontalAlignment','center');
-            else
-                dummy = subplot(8, 1, 6:8, 'Parent', obj.figHandle);
-                pos = get(dummy, 'Position');
-                delete(dummy);
-                obj.Axes.spectrogram = copyobj(figStruct.spectrogram.ax, obj.figHandle);
-                set(obj.Axes.spectrogram, 'Position', pos);
-            end
+            obj.Axes.rawemg          = copyAndPos(figStruct.rawemg, 3);
+            obj.Axes.whisker         = copyAndPos(figStruct.whisker, 4);
+            obj.Axes.pupil           = copyAndPos(figStruct.pupil, 5);
+            obj.Axes.spectrogram     = copyAndPos(figStruct.spectrogram, 6:8);
 
             % Link axes
             linkaxes([obj.Axes.force, obj.Axes.emg_power, obj.Axes.rawemg, ...
-                obj.Axes.whisker, obj.Axes.pupil, obj.Axes.spectrogram], 'x');
+                obj.Axes.whisker], 'x');
 
             % Scoring axes references
             obj.Axes.scoring_emg = obj.Axes.emg_power;
@@ -193,6 +174,12 @@ classdef sleepscoring_gui < handle
                 'FontWeight', 'bold', 'FontSize', 14, ...
                 'ButtonPushedFcn', @(~,~) obj.handle_event('Button', 'REM Sleep'));
 
+            % Drowsy (Green)
+            uibutton(StateLayout, 'Text', 'Drowsy (D)', ...
+                'BackgroundColor', obj.green, 'FontColor', obj.white, ...
+                'FontWeight', 'bold', 'FontSize', 14, ...
+                'ButtonPushedFcn', @(~,~) obj.handle_event('Button', 'Drowsy'));
+
             % --- Panel 2: Tools & Navigation ---
             ToolsPanel = uipanel(MainLayout, 'Title', 'Tools & Nav');
             ToolsPanel.Layout.Row = 2;
@@ -249,6 +236,7 @@ classdef sleepscoring_gui < handle
                     case obj.StateCodes.NotSleep, c=cNot;
                     case obj.StateCodes.NREM, c=cNREM;
                     case obj.StateCodes.REM, c=cREM;
+                    case obj.StateCodes.Drowsy, c=obj.green;
                     otherwise, c=[1 1 1];
                 end
                 t1 = edges(i); t2 = edges(i+1);
@@ -352,11 +340,11 @@ classdef sleepscoring_gui < handle
             ok = false; selLabel = ''; s = []; e = [];
             [indx, tf] = listdlg('PromptString','Choose label:', ...
                 'SelectionMode','single', ...
-                'ListString',{'Not Sleep','NREM Sleep','REM Sleep'}, ...
+                'ListString',{'Not Sleep','NREM Sleep','REM Sleep', 'Drowsy'}, ...
                 'InitialValue',1,'ListSize',[180 90]);
             if ~tf, return; end
             % Map selection to numeric code
-            possibleCodes = [obj.StateCodes.NotSleep, obj.StateCodes.NREM, obj.StateCodes.REM];
+            possibleCodes = [obj.StateCodes.NotSleep, obj.StateCodes.NREM, obj.StateCodes.REM, obj.StateCodes.Drowsy];
             selLabel = possibleCodes(indx);
 
             figure(obj.figHandle);
@@ -371,11 +359,11 @@ classdef sleepscoring_gui < handle
             ok = false; selLabel = ''; s = []; e = [];
             [indx, tf] = listdlg('PromptString','Choose label:', ...
                 'SelectionMode','single', ...
-                'ListString',{'Not Sleep','NREM Sleep','REM Sleep'}, ...
+                'ListString',{'Not Sleep','NREM Sleep','REM Sleep', 'Drowsy'}, ...
                 'InitialValue',1,'ListSize',[180 90]);
             if ~tf, return; end
             % Map selection to numeric code
-            possibleCodes = [obj.StateCodes.NotSleep, obj.StateCodes.NREM, obj.StateCodes.REM];
+            possibleCodes = [obj.StateCodes.NotSleep, obj.StateCodes.NREM, obj.StateCodes.REM, obj.StateCodes.Drowsy];
             selLabel = possibleCodes(indx);
 
             answ = inputdlg({'Start time (s):','End time (s):'}, ...
@@ -468,8 +456,9 @@ classdef sleepscoring_gui < handle
                         case obj.StateCodes.NotSleep, c=cNot;
                         case obj.StateCodes.NREM, c=cNREM;
                         case obj.StateCodes.REM, c=cREM;
+                        case obj.StateCodes.Drowsy, c=obj.green;
                         otherwise, c='none';
-                    end
+                    end % Recycle green
                 end
 
                 % Retrieve persistent handle
@@ -503,22 +492,37 @@ classdef sleepscoring_gui < handle
 
 
 
-        function t = get_results(obj)
+        function results = get_results(obj)
             % Create table with numeric state and string representation
             numericState = obj.State.behavioralState;
 
-            % Map to strings
-            strState = cell(size(numericState));
-            for i = 1:length(numericState)
-                idx = numericState(i) + 1; % 0-indexed code
-                if idx >= 1 && idx <= length(obj.StateNames)
-                    strState{i} = obj.StateNames{idx};
+            % Create result struct
+            results.Table = table(numericState, 'VariableNames', {'behavState'});
+
+            % Backward compatibility fields (if user code accesses .behavState directly on the return value)
+            % If the return value was a table, .behavState works.
+            % If it's a struct, we need to add the field.
+            results.behavState = numericState;
+
+            % Calculate start/end times for each state
+            binWidth = obj.Data.binWidth_s;
+            % Generate time bounds
+            % Helper to get [Start, End] for a given code
+            function times = get_state_times(code)
+                binIndices = find(numericState == code);
+                if isempty(binIndices)
+                    times = double.empty(0, 2);
                 else
-                    strState{i} = 'Unknown';
+                    s = (binIndices - 1) * binWidth;
+                    e = binIndices * binWidth;
+                    times = [s, e];
                 end
             end
-
-            t = table(numericState, strState, 'VariableNames', {'behavState', 'behavStateStr'});
+            results.AwakeTimes = get_state_times(obj.StateCodes.NotSleep);
+            results.NREMTimes = get_state_times(obj.StateCodes.NREM);
+            results.REMTimes = get_state_times(obj.StateCodes.REM);
+            results.DrowsyTimes = get_state_times(obj.StateCodes.Drowsy);
+            results.UnscoredTimes = get_state_times(obj.StateCodes.Unscored);
         end
     end
 
@@ -549,6 +553,7 @@ classdef sleepscoring_gui < handle
                     case {'a', '1'}, action = obj.StateCodes.NotSleep;
                     case {'n', '2'}, action = obj.StateCodes.NREM;
                     case {'r', '3'}, action = obj.StateCodes.REM;
+                    case {'d', '4'}, action = obj.StateCodes.Drowsy;
                     case {'k', 'rightarrow'}, action = 'next_bin';
                     case {'j', 'leftarrow'}, action = 'prev_bin';
                 end
@@ -557,6 +562,7 @@ classdef sleepscoring_gui < handle
                     case 'Not Sleep', action = obj.StateCodes.NotSleep;
                     case 'NREM Sleep', action = obj.StateCodes.NREM;
                     case 'REM Sleep', action = obj.StateCodes.REM;
+                    case 'Drowsy', action = obj.StateCodes.Drowsy;
                     otherwise, action = eventData;
                 end
             end

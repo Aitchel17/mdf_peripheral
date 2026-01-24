@@ -104,7 +104,7 @@ classdef peripheral_fig < handle
             % ylim depends on data, let auto-scale handle it or set manually via helper
         end
 
-        function plot_ecogspectrum(obj, ecog_spectrum)
+        function plot_ecogspectrum(obj, S,T,F)
             %PLOT_ECOGSPECTRUM Plots ECoG spectrogram
             %   Expects struct with fields: T, F, log_norm_spectrum
 
@@ -112,14 +112,14 @@ classdef peripheral_fig < handle
 
             % Matches logic from plot_ecogspectrum.m
             % surface(x, y, z, c)
-            surface(obj.ax, ecog_spectrum.T, ...
-                ecog_spectrum.F, ...
-                zeros(size(ecog_spectrum.log_norm_spectrum)), ...
-                ecog_spectrum.log_norm_spectrum, ...
+            surface(obj.ax, T, ...
+                F, ...
+                zeros(size(S)), ...
+                S, ...
                 'LineStyle', 'none');
 
             set(obj.ax, 'YScale', 'log');
-            xlim(obj.ax, [min(ecog_spectrum.T) max(ecog_spectrum.T)]);
+            xlim(obj.ax, [min(T) max(T)]);
             ylabel(obj.ax, 'Freq (Hz)');
             xlabel(obj.ax, 'sec');
 

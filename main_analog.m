@@ -1,5 +1,5 @@
 %% 1. Load Data
-base_path = 'G:\tmp\00_igkl\hql090\251016_hql090_sleep\HQL090_sleep251016_002';
+base_path = 'G:\tmp\00_igkl\hql088\250927_hql088_sleep\HQL088_sleep250927_009';
 peripheral_session = peripheral_mdf(base_path);
 
 %% 2. Run or load Analysis
@@ -29,12 +29,23 @@ figStruct.whisker.fig.Position = [30 0.5 8 3];
 figStruct.pupil.fig.Position = [30 3.5 8 3];
 figStruct.pupil.fig.Visible = 'on';
 
+%% Behaviorcam processing
+camera_session = analysis_camera(peripheral_session);
+camera_session.get_whiskermovement(5);
+%% pupil analysis
+camera_session.run_pupil_analysis(peripheral_session.dir_struct.eye)
+
+%% whisker figure
+figStruct.whisker.plot_line(camera_session.whisker.var_mean_whisker,"XAxis",camera_session.whisker.var_taxis)
+ylabel(figStruct.whisker.ax, 'Face mean variance')
+xlabel(figStruct.whisker.ax, 'Time (sec)')
+
 
 %% ECoG baseline measurement
 
 
 
-%% EMG power figure
+%% Analog figure
 %%
 figStruct.emg_power.reset_axis
 figStruct.emg_power.plot_line(primary_analog.emg.resampled_power, Xaxis=primary_analog.emg.rs_taxis)
@@ -61,7 +72,8 @@ xlabel(figStruct.force.ax, 'Time (sec)')
 
 % ECoG figure
 figStruct.spectrogram.reset_axis
-figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum)
+figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum.baseline_S,...
+    primary_analog.ecog.ecogspectrum.T,primary_analog.ecog.ecogspectrum.F)
 %%
 %% 99. ECoG baseline selection
 session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
@@ -69,7 +81,15 @@ ECoG_baseline = sleepscoring_gui(session_duration);
 ECoG_baseline.setup_figure(figStruct)
 ECoG_baseline.setup_control_panel();
 %%
-ECoG_baseline.get_results
+ECoG_baseline_5s = ECoG_baseline.get_results;
+primary_analog.get_ecogbaseline(ECoG_baseline_5s.AwakeTimes,ECoG_baseline.Data.binWidth_s);
+
+figStruct.spectrogram.reset_axis
+figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum.baseline_S,...
+    primary_analog.ecog.ecogspectrum.T, primary_analog.ecog.ecogspectrum.F)
+
+%% Seconds bin to spectrogram
+target_taxis = primary_analog.ecog.ecogspectrum.T;
 
 
 %%
@@ -78,25 +98,19 @@ sleep_score = sleepscoring_gui(session_duration);
 sleep_score.setup_figure(figStruct)
 sleep_score.setup_control_panel();
 sleep_score.goto_bin(1)
-
-%%
+sleep_result = sleep_score.get_results;
 uiwait(sleep_score.figHandle);
+%%
+
+sleep_result = sleep_score.get_results;
+
+
+
 
 %% Save Analysis Object
 fprintf('Saving primary_analog object...\n');
 primary_analog.save_object(output_dir);
 
-
-%% Behaviorcam processing
-camera_session = analysis_camera(peripheral_session);
-camera_session.get_whiskermovement(5);
-%% pupil analysis
-camera_session.run_pupil_analysis(peripheral_session.dir_struct.eye)
-
-%% whisker figure
-figStruct.whisker.plot_line(camera_session.whisker.var_mean_whisker,"XAxis",camera_session.whisker.var_taxis)
-ylabel(figStruct.whisker.ax, 'Face mean variance')
-xlabel(figStruct.whisker.ax, 'Time (sec)')
 
 
 
