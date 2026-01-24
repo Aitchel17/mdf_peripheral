@@ -237,7 +237,7 @@ classdef sleepscoring_gui < handle
             % --- Panel 2: Tools & Navigation ---
             ToolsPanel = uipanel(MainLayout, 'Title', 'Tools & Nav');
             ToolsPanel.Layout.Row = 2;
-            ToolsLayout = uigridlayout(ToolsPanel, [3,3]); % 3x3 Grid
+            ToolsLayout = uigridlayout(ToolsPanel, [2,2]); % 3x3 Grid
             ToolsLayout.RowHeight = {'1x', '1x', '1x'};
             ToolsLayout.ColumnWidth = {'1x', '1x', '1x'};
             ToolsLayout.Padding = [5 5 5 5];
