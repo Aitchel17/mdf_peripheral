@@ -33,7 +33,7 @@ classdef sleepscoring_gui < handle
 
     properties (Constant)
         % Numeric State Codes (Kept for backward compat / fast access if needed, but discouraged)
-        StateCodes = struct('Unscored', 0, 'NotSleep', 1, 'NREM', 2, 'REM', 3, 'Drowsy', 4);
+        StateCodes = struct('Unscored', 0, 'NotSleep', 1, 'NREM', 2, 'REM', 3, 'Drowsy', 4 ,'uarousal',5);
     end
 
     events
@@ -68,10 +68,11 @@ classdef sleepscoring_gui < handle
             % Keys: Key shortcuts (cell of strings)
             % Field: Result struct field name
             obj.StateDefs = [
-                struct('Name','Not Sleep',  'Code',1, 'Color',obj.black, 'Keys',{{'a','1'}}, 'Field','AwakeTimes'), ...
-                struct('Name','Drowsy',     'Code',4, 'Color',obj.green, 'Keys',{{'d','4'}}, 'Field','DrowsyTimes'), ...
-                struct('Name','NREM Sleep', 'Code',2, 'Color',obj.blue,  'Keys',{{'n','2'}}, 'Field','NREMTimes'), ...
-                struct('Name','REM Sleep',  'Code',3, 'Color',obj.red,   'Keys',{{'r','3'}}, 'Field','REMTimes')
+                struct('Name','Awake',  'Code',1, 'Color',obj.black, 'Keys',{{'a','1'}}, 'Field','AwakeTimes'), ...
+                struct('Name','Drowsy',     'Code',4, 'Color',obj.green, 'Keys',{{'d','2'}}, 'Field','DrowsyTimes'), ...
+                struct('Name','NREM Sleep', 'Code',2, 'Color',obj.blue,  'Keys',{{'n','3'}}, 'Field','NREMTimes'), ...
+                struct('Name','REM Sleep',  'Code',3, 'Color',obj.red,   'Keys',{{'r','4'}}, 'Field','REMTimes'),...
+                struct('Name','Micro Arousal',  'Code',5, 'Color',obj.orange,   'Keys',{{'m','5'}}, 'Field','uArousalTimes')
                 ];
 
             % Map for lookup
@@ -158,7 +159,7 @@ classdef sleepscoring_gui < handle
             % Incorporates Sleep State buttons directly.
 
             % Window Size
-            WindowSize = [500, 400]; % Increased height for better layout
+            WindowSize = [500, 400]; % Increased height for scalable layout
 
             % Determine Position (Top-Right of Main Figure)
             if ~isempty(obj.figHandle) && isvalid(obj.figHandle)
@@ -188,7 +189,7 @@ classdef sleepscoring_gui < handle
 
             % Main Layout: 2 Rows (State Selection, Tools)
             MainLayout = uigridlayout(obj.GUI.cpFig, [2,1]);
-            MainLayout.RowHeight = {100, '1x'};
+            MainLayout.RowHeight = {'3x', '2x'};
             MainLayout.Padding = [10 10 10 10];
             MainLayout.RowSpacing = 10;
 
@@ -238,8 +239,8 @@ classdef sleepscoring_gui < handle
             ToolsPanel = uipanel(MainLayout, 'Title', 'Tools & Nav');
             ToolsPanel.Layout.Row = 2;
             ToolsLayout = uigridlayout(ToolsPanel, [2,2]); % 3x3 Grid
-            ToolsLayout.RowHeight = {'1x', '1x', '1x'};
-            ToolsLayout.ColumnWidth = {'1x', '1x', '1x'};
+            ToolsLayout.RowHeight = {'1x', '1x'};
+            ToolsLayout.ColumnWidth = {'1x', '1x'};
             ToolsLayout.Padding = [5 5 5 5];
 
             % Tools Configuration
@@ -263,8 +264,8 @@ classdef sleepscoring_gui < handle
                     'ButtonPushedFcn', callback);
 
                 % Position logic matches simple grid fill
-                rowIdx = ceil(i/3);
-                colIdx = mod(i-1, 3) + 1;
+                rowIdx = ceil(i/2);
+                colIdx = mod(i-1, 2) + 1;
                 btn.Layout.Row = rowIdx;
                 btn.Layout.Column = colIdx;
             end
