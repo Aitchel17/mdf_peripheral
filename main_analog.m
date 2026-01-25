@@ -2,14 +2,16 @@
 base_path = 'G:\tmp\00_igkl\hql088\250927_hql088_sleep\HQL088_sleep250927_009';
 peripheral_session = peripheral_mdf(base_path);
 
-%% 2. Run or load Analysis
+% 2. Run or load Analysis
 
 if exist(fullfile(peripheral_session.dir_struct.peripheral,"analysis_analog.mat"),"file") == 2
     primary_analog = analysis_analog.load_object(peripheral_session.dir_struct.peripheral);
 else
     primary_analog = run_analog_analysis(peripheral_session);
 end
-%% Initialize Figure Struct
+%%
+% Initialize Figure Struct
+close all
 figStruct = struct();
 figStruct.emg_power = peripheral_fig('EMG');
 figStruct.rawemg = peripheral_fig('Low pass EMG');
@@ -30,20 +32,22 @@ figStruct.pupil.fig.Position = [30 3.5 8 3];
 figStruct.pupil.fig.Visible = 'on';
 
 %% Behaviorcam processing
-camera_session = analysis_camera(peripheral_session);
-camera_session.get_whiskermovement(5);
-%% pupil analysis
-camera_session.run_pupil_analysis(peripheral_session.dir_struct.eye)
 
+camera_session = analysis_camera(peripheral_session);
+%%
+camera_session.load_whisker(peripheral_session);
+
+%%
+camera_session.get_whiskermovement(5);
+%%
+save(fullfile(peripheral_session.dir_struct.peripheral,'analysis_camera.mat'),'camera_session')
+load(fullfile(peripheral_session.dir_struct.peripheral,'analysis_camera.mat'),'camera_session')
+%%
+x = load('G:\tmp\00_igkl\hql088\250927_hql088_sleep\HQL088_sleep250927_009\peripheral\analysis_camera.mat');
 %% whisker figure
 figStruct.whisker.plot_line(camera_session.whisker.var_mean_whisker,"XAxis",camera_session.whisker.var_taxis)
 ylabel(figStruct.whisker.ax, 'Face mean variance')
 xlabel(figStruct.whisker.ax, 'Time (sec)')
-
-
-%% ECoG baseline measurement
-
-
 
 %% Analog figure
 %%
@@ -72,21 +76,35 @@ xlabel(figStruct.force.ax, 'Time (sec)')
 
 % ECoG figure
 figStruct.spectrogram.reset_axis
-figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum.baseline_S,...
+if isfield(primary_analog.ecog.ecogspectrum,'baseline_S')
+    figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum.baseline_S,...
     primary_analog.ecog.ecogspectrum.T,primary_analog.ecog.ecogspectrum.F)
+else
+    figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum.log_norm_spectrum,...
+    primary_analog.ecog.ecogspectrum.T,primary_analog.ecog.ecogspectrum.F)
+end
+
 %%
 %% 99. ECoG baseline selection
 session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
-ECoG_baseline = sleepscoring_gui(session_duration);
-ECoG_baseline.setup_figure(figStruct)
-ECoG_baseline.setup_control_panel();
+ECoG_gui = sleepscoring_gui(session_duration);
+ECoG_gui.setup_figure(figStruct)
+ECoG_gui.setup_control_panel();
+%% ECoG baseline normalized spectrogram generation
+ECoG_baseline = ECoG_gui.get_results('ECoG_baseline',peripheral_session.dir_struct.peripheral);
+primary_analog.get_ecogbaseline(ECoG_baseline.AwakeTimes,ECoG_baseline.binwidth_sec);
 %%
-ECoG_baseline_5s = ECoG_baseline.get_results;
-primary_analog.get_ecogbaseline(ECoG_baseline_5s.AwakeTimes,ECoG_baseline.Data.binWidth_s);
+primary_analog.save_object(peripheral_session.dir_struct.peripheral)
 
+%%
 figStruct.spectrogram.reset_axis
 figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum.baseline_S,...
     primary_analog.ecog.ecogspectrum.T, primary_analog.ecog.ecogspectrum.F)
+%%
+% ECoG figure
+figStruct.spectrogram.reset_axis
+figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum.baseline_S,...
+    primary_analog.ecog.ecogspectrum.T,primary_analog.ecog.ecogspectrum.F)
 
 %% Seconds bin to spectrogram
 target_taxis = primary_analog.ecog.ecogspectrum.T;
@@ -104,9 +122,13 @@ sleep_result = sleep_score.get_results;
 
 %%
 
-sleep_result = sleep_score.get_results;
+sleep_result = sleep_score.get_results(peripheral_session.dir_struct.peripheral);
 
+%%
+sleep_score.save_session(peripheral_session.dir_struct.peripheral)
 
+%%
+save(fullfile(peripheral_session.dir_struct.peripheral,"sleep_score.mat"),"sleep_score")
 
 
 %% Save Analysis Object

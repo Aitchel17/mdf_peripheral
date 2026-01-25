@@ -1,9 +1,12 @@
 classdef analysis_camera < handle
     properties
         parameter = struct()
+        imgstack = struct()
         whisker
         eye
-        samplingfrequency
+    end
+
+    properties (Constant)
         python_env_path = 'C:\Users\hql5715\AppData\Local\anaconda3\envs\dlc-gpu\python.exe'
         dlc_config_path = '';
     end
@@ -11,41 +14,48 @@ classdef analysis_camera < handle
     methods
         function obj = analysis_camera(peripheral_session)
             %ANALYSIS_CAMERA Construct an instance of this class
-            %   Detailed explanation goes here
-            obj.whisker.raw_whisker = peripheral_session.loadwhisker;
+            %   parameter init
+            if nargin < 1
+                disp('Load analysis_camera object is required')
+                return
+            end
             obj.parameter.analog_count = str2double(peripheral_session.raw_analog.info.analogcount);
             obj.parameter.analog_fs = str2double(peripheral_session.raw_analog.info.analogfreq(1:end-2));
             obj.parameter.analog_end = obj.parameter.analog_count/obj.parameter.analog_fs;
-
             obj.parameter.twophoton_count = str2double(peripheral_session.info.fcount);
             obj.parameter.twophoton_fps = str2double(peripheral_session.info.fps);
             obj.parameter.twophoton_end = obj.parameter.twophoton_count/obj.parameter.twophoton_fps;
+        end
 
-            %sampling frequency calculation
-            obj.parameter.whisker_count = size(obj.whisker.raw_whisker,3);
+
+        function obj = load_whisker(obj,peripheral_session)
+            % load whisker
+            obj.imgstack.raw_whisker = peripheral_session.loadwhisker;
+            % parameter calculation
+            obj.parameter.whisker_count = size(obj.imgstack.raw_whisker,3);
             if isfield(obj.parameter,'analog_end')
                 disp('analog_end used to calculate camera end')
                 obj.parameter.whisker_end = obj.parameter.analog_end;
-                obj.samplingfrequency = obj.parameter.whisker_count/obj.parameter.analog_end;
+                fps = obj.parameter.whisker_count/obj.parameter.analog_end;
             elseif isfield(obj.parameter,'twophoton_end')
                 disp('analog_end used to calculate camera end')
-                obj.samplingfrequency = obj.parameter.whisker_count/obj.parameter.twophoton_end;
+                fps = obj.parameter.whisker_count/obj.parameter.twophoton_end;
             else
                 disp('camera data sampling frequency fixed to 33.3216 calculated from other session')
-                obj.samplingfrequency = 33.3216;
+                fps = 33.3216;
             end
-
+            obj.parameter.cam_fps = fps;
         end
 
-        function obj = get_whiskermovement(obj,groupwindow)
+        function get_whiskermovement(obj,groupwindow)
             obj.whisker.groupwindow = groupwindow;
-            [gpvar_whisker,group_depricatedframe] = cam_groupproject(obj.whisker.raw_whisker,groupwindow,'var');
+            [gpvar_whisker,group_depricatedframe] = cam_groupproject(obj.imgstack.raw_whisker,groupwindow,'var');
             obj.whisker.var_mean_whisker = squeeze(mean(gpvar_whisker,[1,2]));
             % samplingfrequency calculation
             % end time calculation
-            obj.whisker.var_fs = obj.samplingfrequency/groupwindow;
+            obj.whisker.var_fs = obj.parameter.cam_fps/groupwindow;
             obj.whisker.var_taxis = linspace(0, size(gpvar_whisker,3)/obj.whisker.var_fs,size(gpvar_whisker,3));
-            obj.whisker.gpvar_whisker = gpvar_whisker;
+            obj.imgstack.gpvar_whisker = gpvar_whisker;
             obj.whisker.depricated_frames = group_depricatedframe;
         end
 
@@ -172,6 +182,28 @@ classdef analysis_camera < handle
             % So we need to know the extraction FPS or align timestamps.
 
             disp('Pupil data loaded into obj.eye');
+        end
+
+        function s = saveobj(obj)
+            s.parameter = obj.parameter;
+            s.whisker = obj.whisker;
+            s.eye = obj.eye;
+        end
+    end
+
+    methods (Static)
+        function obj = loadobj(s)
+            if isstruct(s)
+                disp('reconstruction started')
+                obj = analysis_camera();
+                obj.parameter = s.parameter;
+                obj.imgstack = struct();
+                obj.whisker = s.whisker;
+                obj.eye = s.eye;
+            else
+                disp('load failed')
+                obj = s;
+            end
         end
     end
 end

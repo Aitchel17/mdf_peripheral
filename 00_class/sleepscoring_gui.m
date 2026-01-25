@@ -7,7 +7,7 @@ classdef sleepscoring_gui < handle
     properties (Access = public)
         Data
         State
-        StateDefs % Array of structs defining states
+
     end
 
     properties (Hidden)
@@ -15,6 +15,8 @@ classdef sleepscoring_gui < handle
         figHandle
         GUI
         stateMap % Map for fast lookup code -> index in StateDefs
+        SpecData % Hidden property for heavy spectrogram data
+
     end
 
     properties (Access = private)
@@ -29,6 +31,7 @@ classdef sleepscoring_gui < handle
         green     = [0.20 0.65 0.20];
         cyan      = [0.00 0.70 0.85];
         white     = [1 1 1];
+        StateDefs
     end
 
     properties (Constant)
@@ -45,7 +48,10 @@ classdef sleepscoring_gui < handle
             %SLEEPSCORING_GUI Construct an instance of the class
 
             if nargin < 3 || isempty(binWidth_s)
-                binWidth_s = 5;
+                binWidth_s = 5; % default
+                session_duration = -1; % for save and loading purpose
+            elseif nargin == 0
+                disp('sleepscoring_gui loading is necessary')
             end
 
             % Initialize Data
@@ -125,14 +131,14 @@ classdef sleepscoring_gui < handle
             end
 
             if ~isempty(hSpec)
-                % Store Full Data Reference
-                obj.Data.Spec.CData = hSpec.CData;
-                obj.Data.Spec.XData = hSpec.XData;
-                obj.Data.Spec.YData = hSpec.YData;
+                % Store Full Data Reference in Hidden Property
+                obj.SpecData.CData = hSpec.CData;
+                obj.SpecData.XData = hSpec.XData;
+                obj.SpecData.YData = hSpec.YData;
                 if isprop(hSpec, 'ZData')
-                    obj.Data.Spec.ZData = hSpec.ZData;
+                    obj.SpecData.ZData = hSpec.ZData;
                 end
-                obj.Data.Spec.Handle = hSpec;
+                obj.SpecData.Handle = hSpec;
 
                 % Setup Listener on Master Axis (Force) XLim
                 % Use 'PostSet' to update after limits change
@@ -445,14 +451,13 @@ classdef sleepscoring_gui < handle
             w = 500;
             x1 = max(0, cx-w/2); x2 = min(obj.Data.allDur_s, cx+w/2);
             xlim(obj.Axes.scoring_emg, [x1 x2]);
-            obj.sync_spectrogram_view();
         end
 
 
         function update_spectrogram_crop(obj)
             % Virtual Cropping Callback
             try
-                if ~isfield(obj.Data, 'Spec') || isempty(obj.Data.Spec.Handle) || ~isvalid(obj.Data.Spec.Handle)
+                if isempty(obj.SpecData) || isempty(obj.SpecData.Handle) || ~isvalid(obj.SpecData.Handle)
                     return;
                 end
 
@@ -462,7 +467,7 @@ classdef sleepscoring_gui < handle
 
                 % Filter Data
                 % Assuming XData is a vector (imagesc/pcolor usually)
-                fullX = obj.Data.Spec.XData;
+                fullX = obj.SpecData.XData;
 
                 % Optimization: buffer to prevent jitter
                 buffer = (xEnd - xStart) * 0.1;
@@ -478,22 +483,22 @@ classdef sleepscoring_gui < handle
                     end
                     % Extract Slice
                     newX = fullX(mask);
-                    fullC = obj.Data.Spec.CData;
+                    fullC = obj.SpecData.CData;
                     if size(fullC, 2) == length(fullX)
                         newC = fullC(:, mask);
-                        if isfield(obj.Data.Spec, 'ZData') && ~isempty(obj.Data.Spec.ZData)
-                            newZ = obj.Data.Spec.ZData(:, mask);
-                            set(obj.Data.Spec.Handle, 'XData', newX, 'CData', newC, 'ZData', newZ);
+                        if isfield(obj.SpecData, 'ZData') && ~isempty(obj.SpecData.ZData)
+                            newZ = obj.SpecData.ZData(:, mask);
+                            set(obj.SpecData.Handle, 'XData', newX, 'CData', newC, 'ZData', newZ);
                         else
-                            set(obj.Data.Spec.Handle, 'XData', newX, 'CData', newC);
+                            set(obj.SpecData.Handle, 'XData', newX, 'CData', newC);
                         end
                     elseif size(fullC, 1) == length(fullX)
                         newC = fullC(mask, :);
-                        if isfield(obj.Data.Spec, 'ZData') && ~isempty(obj.Data.Spec.ZData)
-                            newZ = obj.Data.Spec.ZData(mask, :);
-                            set(obj.Data.Spec.Handle, 'XData', newX, 'CData', newC, 'ZData', newZ);
+                        if isfield(obj.SpecData, 'ZData') && ~isempty(obj.SpecData.ZData)
+                            newZ = obj.SpecData.ZData(mask, :);
+                            set(obj.SpecData.Handle, 'XData', newX, 'CData', newC, 'ZData', newZ);
                         else
-                            set(obj.Data.Spec.Handle, 'XData', newX, 'CData', newC);
+                            set(obj.SpecData.Handle, 'XData', newX, 'CData', newC);
                         end
                     else
                         % Dimension mismatch or different structure
@@ -574,12 +579,11 @@ classdef sleepscoring_gui < handle
             end
         end
 
-        function results = get_results(obj)
+        function results = get_results(obj, filename,savePath)
             % Create table with numeric state and string representation
             numericState = obj.State.behavioralState;
 
             % Create result struct
-            results.Table = table(numericState, 'VariableNames', {'behavState'});
             results.behavState = numericState;
             % Calculate start/end times for each state
             binWidth = obj.Data.binWidth_s;
@@ -605,6 +609,19 @@ classdef sleepscoring_gui < handle
             end
             % Keep Unscored manually if not in StateDefs (often not needed in output, but good for completeness)
             results.UnscoredTimes = get_state_times(0);
+            results.total_duration = obj.Data.allDur_s;
+            results.binwidth_sec = obj.Data.binWidth_s;
+
+            % Save if path provided
+            save(fullfile(savePath, strcat(filename,'.mat')), '-struct', 'results');
+            fprintf('Results saved to %s\n', savePath);
+        end
+
+        function gui = saveobj(obj)
+            % Saves the lightweight session state (Data, State, Defs)
+            % Excludes heavy Spectrogram data (handled via SpecData property)
+            gui.Data = obj.Data;
+            gui.State = obj.State;
         end
     end
     % Methods for events
@@ -707,6 +724,12 @@ classdef sleepscoring_gui < handle
                         obj.goto_bin(bEnd + 1);
                 end
             end
+        end
+    end
+
+    methods (Static)
+        function obj = loadobj(s)
+
         end
     end
 end
