@@ -49,6 +49,8 @@ classdef analysis_camera < handle
 
         function get_whiskermovement(obj,groupwindow)
             obj.whisker.groupwindow = groupwindow;
+            % Moving standard deviation..? maybe overkill group projection
+            % will provide downsample effect and calculation of variance
             [gpvar_whisker,group_depricatedframe] = cam_groupproject(obj.imgstack.raw_whisker,groupwindow,'var');
             obj.whisker.var_mean_whisker = squeeze(mean(gpvar_whisker,[1,2]));
             % samplingfrequency calculation

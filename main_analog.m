@@ -8,7 +8,20 @@ if exist(fullfile(peripheral_session.dir_struct.peripheral,"analysis_analog.mat"
     primary_analog = analysis_analog.load_object(peripheral_session.dir_struct.peripheral);
 else
     primary_analog = run_analog_analysis(peripheral_session);
+    primary_analog.save_object(peripheral_session.dir_struct.peripheral)
 end
+% Behaviorcam processing
+if exist(fullfile(peripheral_session.dir_struct.peripheral,'analysis_camera.mat')) == 2
+    load(fullfile(peripheral_session.dir_struct.peripheral,'analysis_camera.mat'),'camera_session')
+else
+    camera_session = analysis_camera(peripheral_session);
+    camera_session.load_whisker(peripheral_session);
+    camera_session.get_whiskermovement(5);
+    save(fullfile(peripheral_session.dir_struct.peripheral,'analysis_camera.mat'),'camera_session')
+end
+
+%%
+
 %%
 % Initialize Figure Struct
 close all
@@ -31,26 +44,15 @@ figStruct.whisker.fig.Position = [30 0.5 8 3];
 figStruct.pupil.fig.Position = [30 3.5 8 3];
 figStruct.pupil.fig.Visible = 'on';
 
-%% Behaviorcam processing
 
-camera_session = analysis_camera(peripheral_session);
-%%
-camera_session.load_whisker(peripheral_session);
 
-%%
-camera_session.get_whiskermovement(5);
-%%
-save(fullfile(peripheral_session.dir_struct.peripheral,'analysis_camera.mat'),'camera_session')
-load(fullfile(peripheral_session.dir_struct.peripheral,'analysis_camera.mat'),'camera_session')
-%%
-x = load('G:\tmp\00_igkl\hql088\250927_hql088_sleep\HQL088_sleep250927_009\peripheral\analysis_camera.mat');
 %% whisker figure
 figStruct.whisker.plot_line(camera_session.whisker.var_mean_whisker,"XAxis",camera_session.whisker.var_taxis)
 ylabel(figStruct.whisker.ax, 'Face mean variance')
 xlabel(figStruct.whisker.ax, 'Time (sec)')
 
-%% Analog figure
-%%
+% Analog figure
+%
 figStruct.emg_power.reset_axis
 figStruct.emg_power.plot_line(primary_analog.emg.resampled_power, Xaxis=primary_analog.emg.rs_taxis)
 ylabel(figStruct.emg_power.ax, 'EMG power')
@@ -84,19 +86,29 @@ else
     primary_analog.ecog.ecogspectrum.T,primary_analog.ecog.ecogspectrum.F)
 end
 
+%% Loading 
+load(fullfile(peripheral_session.dir_struct.peripheral,"ECoG_baseline.mat"))
 %%
+
 %% 99. ECoG baseline selection
-session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
-ECoG_gui = sleepscoring_gui(session_duration);
+
+% Load or initialize scoring gui
+if exist(fullfile(peripheral_session.dir_struct.peripheral,"ECoG_gui.mat"))
+    load(fullfile(peripheral_session.dir_struct.peripheral,"ECoG_gui.mat"));
+else
+    session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
+    ECoG_gui = sleepscoring_gui(session_duration);
+end
 ECoG_gui.setup_figure(figStruct)
 ECoG_gui.setup_control_panel();
+save(fullfile(peripheral_session.dir_struct.peripheral,'ECoG_gui.mat'),'ECoG_gui')
+
 %% ECoG baseline normalized spectrogram generation
 ECoG_baseline = ECoG_gui.get_results('ECoG_baseline',peripheral_session.dir_struct.peripheral);
 primary_analog.get_ecogbaseline(ECoG_baseline.AwakeTimes,ECoG_baseline.binwidth_sec);
-%%
 primary_analog.save_object(peripheral_session.dir_struct.peripheral)
 
-%%
+%% Update ECoG using baseline normalized ECog
 figStruct.spectrogram.reset_axis
 figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum.baseline_S,...
     primary_analog.ecog.ecogspectrum.T, primary_analog.ecog.ecogspectrum.F)

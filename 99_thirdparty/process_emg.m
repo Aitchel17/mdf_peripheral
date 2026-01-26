@@ -14,16 +14,18 @@ arguments
 end
 
 nyquist = sampling_frequency/2;
-%% EMG POWER FILTER (300–3000 Hz)
+%% EMG POWER FILTER (100–300 Hz)
 bandPower(2) = min(bandPower(2), nyquist*0.9);
 
 [z,p,k] = butter(FilterOrder, bandPower/nyquist);
 [sos,g] = zp2sos(z,p,k);
-filteredEMG = filtfilt(sos,g, emgRaw - mean(emgRaw));
+mean_subtractedEMG = emgRaw - mean(emgRaw);
+filteredEMG = filtfilt(sos,g, mean_subtractedEMG); % mean subtracted EMG
 
 kernel = gausswin(max(3,round(kernelWidth*sampling_frequency)));
 kernel = kernel/sum(kernel);
 emgPower = log10(conv(filteredEMG.^2, kernel, 'same'));
+
 
 %% EMG SIGNAL FILTER (10–100 Hz)
 bandSignal(2) = min(bandSignal(2), nyquist*0.9);

@@ -47,11 +47,12 @@ classdef sleepscoring_gui < handle
         function obj = sleepscoring_gui(session_duration, binWidth_s)
             %SLEEPSCORING_GUI Construct an instance of the class
 
-            if nargin < 3 || isempty(binWidth_s)
+
+            if session_duration == -1 || binWidth_s == -1
+                disp('sleepscoring_gui loading...')
+                return;
+            elseif nargin < 3 || isempty(binWidth_s)
                 binWidth_s = 5; % default
-                session_duration = -1; % for save and loading purpose
-            elseif nargin == 0
-                disp('sleepscoring_gui loading is necessary')
             end
 
             % Initialize Data
@@ -729,6 +730,9 @@ classdef sleepscoring_gui < handle
 
     methods (Static)
         function obj = loadobj(s)
+            obj = sleepscoring_gui(-1, -1);
+            obj.Data = s.Data;
+            obj.State = s.State;
 
         end
     end
