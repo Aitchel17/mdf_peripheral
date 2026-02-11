@@ -8,7 +8,9 @@ classdef analysis_camera < handle
 
     properties (Constant)
         python_env_path = 'C:\Users\hql5715\AppData\Local\anaconda3\envs\dlc-gpu\python.exe'
-        dlc_config_path = '';
+        pupil_python_env_path = 'C:\Users\hql5715\AppData\Local\anaconda3\envs\pupil_yzhao\python.exe'
+        dlc_config_path = 'G:\dlc\pupil_resonant-hql5715-2026-01-16\config.yaml';
+        unet_script_path = 'G:\03_program\04_yueunet_pupiltrack\run_pupil_analysis.py';
     end
 
     methods
@@ -61,45 +63,137 @@ classdef analysis_camera < handle
             obj.whisker.depricated_frames = group_depricatedframe;
         end
 
-        function run_dlc_analysis(obj, video_path, dlc_config_in)
-            %RUN_DLC_ANALYSIS Run DeepLabCut analysis and video creation
-            %   video_path: Absolute path to video
-            %   dlc_config_in: (Optional) Path to config.yaml. Uses obj.dlc_config_path if omitted.
-
-            if nargin < 3
-                if ~isempty(obj.dlc_config_path)
-                    config_path = obj.dlc_config_path;
-                else
-                    error('Please provide dlc_config_path argument or set obj.dlc_config_path');
-                end
-            else
-                config_path = dlc_config_in;
+        function run_unet_analysis(obj, video_path, export_mask)
+            arguments
+                obj
+                video_path (1,:) char
+                export_mask (1,1) logical = false
             end
 
             if ~exist(video_path, 'file')
                 error('Video not found: %s', video_path);
             end
-            if ~exist(config_path, 'file')
-                error('DLC Config not found: %s', config_path);
+            if ~exist(obj.unet_script_path, 'file')
+                error('UNet Script not found: %s', obj.unet_script_path);
             end
 
-            % Output Directory: peripheral/dlc_pupil relative to video?
-            % User asked for: "under peripheral/dlc_pupil"
             [p, ~, ~] = fileparts(video_path);
 
-            % Attempt to locate 'peripheral' folder if we are not already in it
-            % Logic: assume video is in session_root/peripheral/video.avi -> output: session_root/peripheral/dlc_pupil
-            % Or video is in session_root/video.avi -> output: session_root/peripheral/dlc_pupil
-
-            if contains(p, 'peripheral')
-                % If we are already deep, maybe go up?
-                % Let's keep it simple: Create <video_dir>/dlc_pupil if 'peripheral' isn't explicitly found as parent
-                % But if user wants "peripheral/dlc_pupil" strictly:
-                dest_folder = fullfile(p, 'dlc_pupil');
-            else
-                % Create peripheral/dlc_pupil structure
-                dest_folder = fullfile(p, 'peripheral', 'dlc_pupil');
+            % output folder
+            dest_folder = fullfile(p, 'peripheral', 'u19unet_pupil');
+            if ~exist(dest_folder, 'dir')
+                mkdir(dest_folder);
             end
+
+            % Temp frames folder
+            frames_dir = fullfile(dest_folder, 'temp_frames');
+            if ~exist(frames_dir, 'dir')
+                mkdir(frames_dir);
+            end
+
+            % Construct command
+            % We invoke python.exe directly on the script
+            cmd = sprintf('"%s" "%s" --video_path "%s" --result_dir "%s" --out_dir "%s" 2>&1', ...
+                obj.pupil_python_env_path, obj.unet_script_path, video_path, dest_folder, frames_dir);
+
+            if export_mask
+                mask_dir = fullfile(dest_folder, 'masks');
+                if ~exist(mask_dir, 'dir')
+                    mkdir(mask_dir);
+                end
+                cmd = [cmd, sprintf(' --output_mask_dir "%s"', mask_dir)];
+            end
+
+            disp(['Executing UNet Analysis: ' cmd]);
+
+            % Execute
+            status = system(cmd);
+
+            if status ~= 0
+                % Check if basic help works to debug environment?
+                % system(sprintf('"%s" --version', obj.pupil_python_env_path));
+                error('UNet Analysis failed with status %d. Check console output for Python errors.', status);
+            else
+                disp('UNet Analysis Execution Successful.');
+
+                % Clean up frames
+                if exist(frames_dir, 'dir')
+                    disp(['Removing temporary frames in: ' frames_dir]);
+                    try
+                        rmdir(frames_dir, 's');
+                    catch ME
+                        warning('Could not remove temporary frames: %s', ME.message);
+                    end
+                end
+
+                % Optional: Auto-load the data if successful?
+                % obj.load_dlc_pupil(video_path); % We might need to adapt load_dlc_pupil or create load_unet_pupil
+            end
+        end
+
+        function load_unet_pupil(obj, video_path)
+            %LOAD_UNET_PUPIL Load the csv output from UNet pupil tracking
+            %   Assumes output is in peripheral/u19unet_pupil/
+            %   video_path: Absolute path to video file used for analysis
+
+            if ~exist(video_path, 'file')
+                error('Video not found: %s', video_path);
+            end
+
+            [p, n, ~] = fileparts(video_path);
+            csv_dir = fullfile(p, 'peripheral', 'u19unet_pupil');
+            csv_file = fullfile(csv_dir, [n '_estimated_pupil_diameter.csv']);
+
+            if ~exist(csv_file, 'file')
+                error('Pupil data CSV not found at %s', csv_file);
+            end
+
+            disp(['Loading pupil data from: ' csv_file]);
+            opts = detectImportOptions(csv_file);
+            tbl = readtable(csv_file, opts);
+
+            % Initialize eye struct
+            obj.eye = struct();
+            %%
+
+            %%
+
+            % CSV columns: image_name, estimated_pupil_diameter
+            if ismember('estimated_pupil_diameter', tbl.Properties.VariableNames)
+                obj.eye.diameter = tbl.estimated_pupil_diameter;
+            else
+                warning('Could not identify "estimated_pupil_diameter" column. Loading full table.');
+                obj.eye.diameter = [];
+                obj.eye.raw_table = tbl;
+            end
+
+            % Sampling frequency
+            % Default extraction FPS in run_pupil_analysis.py is 5 Hz
+            obj.eye.pupil_fps = obj.parameter.cam_fps;
+
+            if ~isempty(obj.eye.diameter)
+                % Create time axis stretching from 0 to the calculated end time
+                obj.eye.t_axis = linspace(0, obj.parameter.twophoton_end, length(obj.eye.diameter));
+            end
+            disp('Pupil data loaded into obj.eye');
+        end
+
+        function run_dlc_analysis(obj, video_path)
+            %RUN_DLC_ANALYSIS Run DeepLabCut analysis and video creation
+            %   video_path: Absolute path to video
+            %   dlc_config_in: (Optional) Path to config.yaml. Uses obj.dlc_config_path if omitted.
+
+
+            if ~exist(video_path, 'file')
+                error('Video not found: %s', video_path);
+            end
+            if ~exist(obj.dlc_config_path, 'file')
+                error('DLC Config not found: %s', obj.dlc_config_path);
+            end
+
+
+            [parents, ~, ~] = fileparts(video_path);
+            dest_folder = fullfile(parents, 'peripheral', 'dlc_pupil');
 
             if ~exist(dest_folder, 'dir')
                 mkdir(dest_folder);
@@ -110,15 +204,15 @@ classdef analysis_camera < handle
 
             % Escape backslashes for Python string
             v_py = strrep(video_path, '\', '\\');
-            c_py = strrep(config_path, '\', '\\');
+            c_py = strrep(obj.dlc_config_path, '\', '\\');
             d_py = strrep(dest_folder, '\', '\\');
 
             py_code = sprintf([...
                 'import deeplabcut\n' ...
                 'import os\n' ...
-                'config_path = "%s"\n' ...
-                'video_path = ["%s"]\n' ...
-                'dest_folder = "%s"\n' ...
+                'config_path = "%s"\n' ... % This part will be changed
+                'video_path = ["%s"]\n' ... % This part will be changed
+                'dest_folder = "%s"\n' ... %  This part will be changed
                 'print("Starting DLC Analysis...")\n' ...
                 'deeplabcut.analyze_videos(config_path, video_path, save_as_csv=True, destfolder=dest_folder)\n' ...
                 'print("Creating Labeled Video...")\n' ...
@@ -137,7 +231,6 @@ classdef analysis_camera < handle
 
             % Cleanup
             % delete(py_script_file);
-
             if status ~= 0
                 error('DLC Analysis failed with status %d', status);
             else
@@ -145,7 +238,7 @@ classdef analysis_camera < handle
             end
         end
 
-        function load_pupil_data(obj, video_path)
+        function load_dlc_pupil(obj, video_path)
             %LOAD_PUPIL_DATA Load the csv output from pupil tracking
             %   Assumes output is in <video_stem>_frames_result/
 
@@ -184,6 +277,42 @@ classdef analysis_camera < handle
             % So we need to know the extraction FPS or align timestamps.
 
             disp('Pupil data loaded into obj.eye');
+        end
+
+        function clean_pupil_outliers(obj, threshold)
+            %CLEAN_PUPIL_OUTLIERS Replace outliers with NaN based on median filter
+            %   threshold: deviation threshold (default 5)
+
+            if nargin < 2
+                threshold = 5;
+            end
+
+            if ~isfield(obj.eye, 'diameter') || isempty(obj.eye.diameter)
+                warning('No pupil diameter data to clean.');
+                return;
+            end
+
+            % Backup raw data if not already done
+            if ~isfield(obj.eye, 'diameter_raw')
+                obj.eye.diameter_raw = obj.eye.diameter;
+            end
+
+            data = obj.eye.diameter;
+
+            % Median filtering for reference (window size 9 matches clean_outlier.m)
+            % Using 'truncate' to handle edges similar to clean_outlier
+            ref_median = medfilt1(data, 21, 'zeropad');
+     
+            diff_data = abs(data - ref_median);
+            outlier_idx = diff_data > threshold;
+
+            if any(outlier_idx)
+                fprintf('Cleaning pupil data: %d outliers removed (Threshold: %.2f)\n', sum(outlier_idx), threshold);
+                data(outlier_idx) = NaN;
+                obj.eye.diameter = data;
+            else
+                fprintf('Cleaning pupil data: No outliers found (Threshold: %.2f)\n', threshold);
+            end
         end
 
         function s = saveobj(obj)

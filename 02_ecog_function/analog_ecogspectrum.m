@@ -22,7 +22,7 @@ function [ecog_spectrum] = analog_ecogspectrum(samplingfreq,ECoG)
 end
 
 function [S,t,f,Serr] = mtspecgramc(data,movingwin,params)
-    %________________________________________________________________________________________________________________________
+    %_from Partha Mitra http://chronux.org/_______________________________________________________________________________________________________________________
     %%
     % Multi-taper time-frequency spectrum - continuous process
     %
@@ -401,4 +401,3 @@ elseif N~=sz(1);
     error('seems to be an error in your dpss calculation; the number of time points is different from the length of the tapers');
 end;
 end
-
