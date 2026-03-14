@@ -20,7 +20,7 @@ classdef sleepscoring_gui < handle
     end
 
     properties (Access = private)
-        monitor_pos = [20 1 17 9];
+        monitor_pos = [3 1 17 9]; % change figure size and position in monitor (inch) [LeftRight UpDown Width Height]
         % Colors
         blue      = [0.00 0.45 0.90];
         red       = [0.85 0.10 0.10];
