@@ -20,7 +20,7 @@ classdef sleepscoring_gui < handle
     end
 
     properties (Access = private)
-        monitor_pos = [20 1 17 9];
+        monitor_pos = [3 1 17 9]; % change figure size and position in monitor (inch) [LeftRight UpDown Width Height]
         % Colors
         blue      = [0.00 0.45 0.90];
         red       = [0.85 0.10 0.10];
@@ -46,13 +46,14 @@ classdef sleepscoring_gui < handle
     methods
         function obj = sleepscoring_gui(session_duration, binWidth_s)
             %SLEEPSCORING_GUI Construct an instance of the class
-
             if nargin < 3 || isempty(binWidth_s)
                 binWidth_s = 5; % default
-                session_duration = -1; % for save and loading purpose
-            elseif nargin == 0
-                disp('sleepscoring_gui loading is necessary')
             end
+
+            if session_duration == -1 || binWidth_s == -1
+                disp('sleepscoring_gui loading...')
+            end
+
 
             % Initialize Data
             NBins = floor(session_duration / binWidth_s);
@@ -119,9 +120,12 @@ classdef sleepscoring_gui < handle
             obj.Axes.pupil           = copyAndPos(figStruct.pupil, 5);
             obj.Axes.spectrogram     = copyAndPos(figStruct.spectrogram, 6:8);
 
+            % Freeze Y-axis limits for all signal plots to prevent auto-scaling during panning
+            axesList = [obj.Axes.force, obj.Axes.emg_power, obj.Axes.rawemg, obj.Axes.whisker, obj.Axes.pupil];
+            set(axesList, 'YLimMode', 'manual');
+
             % Link axes (Include Spectrogram again for virtual cropping)
-            linkaxes([obj.Axes.force, obj.Axes.emg_power, obj.Axes.rawemg, ...
-                obj.Axes.whisker, obj.Axes.pupil, obj.Axes.spectrogram], 'x');
+            linkaxes([axesList, obj.Axes.spectrogram], 'x');
 
             % --- Spectrogram Virtual Cropping (Performance) ---
             % Find the graphic object (Image or Surface)
@@ -139,6 +143,9 @@ classdef sleepscoring_gui < handle
                     obj.SpecData.ZData = hSpec.ZData;
                 end
                 obj.SpecData.Handle = hSpec;
+
+                % Freeze color limits to prevent auto-scaling during panning
+                set(obj.Axes.spectrogram, 'CLimMode', 'manual');
 
                 % Setup Listener on Master Axis (Force) XLim
                 % Use 'PostSet' to update after limits change
@@ -158,6 +165,8 @@ classdef sleepscoring_gui < handle
             obj.GUI.hMarker3 = xline(obj.Axes.scoring_spec, -100,'-','Color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
             obj.GUI.hMarker4 = xline(obj.Axes.scoring_spec, -100,'-','Color',[0.75 0 1],'LineWidth',2, 'Tag', 'BinMarker');
 
+            % Update full visualization on load
+            obj.update_state_visualization(0, obj.Data.allDur_s);
         end
 
         function setup_control_panel(obj)
@@ -349,7 +358,11 @@ classdef sleepscoring_gui < handle
         function [jumpBi, betweenIdx] = pick_jump_plot(obj)
             figure(obj.figHandle);
             [t,~,~] = ginput(1);
-            if isempty(t), jumpBi = []; betweenIdx=[]; return; end
+            if isempty(t)
+                jumpBi = [];
+                betweenIdx=[];
+                return;
+            end
             t = max(0, min(t, obj.Data.allDur_s));
             targetBin = max(1, ceil(t / obj.Data.binWidth_s));
             jumpBi = targetBin;
@@ -369,7 +382,9 @@ classdef sleepscoring_gui < handle
                 'SelectionMode','single', ...
                 'ListString', names, ...
                 'InitialValue',1,'ListSize',[180 90]);
-            if ~tf, return; end
+            if ~tf
+                return;
+            end
 
             selLabel = codes(indx);
 
@@ -395,7 +410,9 @@ classdef sleepscoring_gui < handle
                 'SelectionMode','single', ...
                 'ListString', names, ...
                 'InitialValue',1,'ListSize',[180 90]);
-            if ~tf, return; end
+            if ~tf
+                return;
+            end
 
             selLabel = codes(indx);
 
@@ -579,6 +596,55 @@ classdef sleepscoring_gui < handle
             end
         end
 
+        function save_figure(obj, filename, save_dir)
+            % SAVE_FIGURE Export the full scored session as a high-res PNG and FIG
+            arguments
+                obj
+                filename (1,:) char
+                save_dir (1,:) char
+            end
+
+            % Ensure directory exists
+            if ~exist(save_dir, 'dir')
+                mkdir(save_dir);
+            end
+
+            % Store current view
+            ax = obj.Axes.force;
+            currentXLim = xlim(ax);
+
+            try
+                % Zoom out to full duration
+                obj.enable_click_zoom(false); % Disable click zoom temporarily to avoid errors?
+                xlim(ax, [0, obj.Data.allDur_s]);
+
+                % Force update of state patches for the whole duration
+                obj.update_state_visualization(0, obj.Data.allDur_s);
+
+                % Ensure everything is rendered
+                drawnow;
+
+                % Export PNG
+                pngPath = fullfile(save_dir, [filename '.png']);
+                figPath = fullfile(save_dir, [filename '.fig']);
+
+                fprintf('Exporting high-res figure to %s ...\n', pngPath);
+                exportgraphics(obj.figHandle, pngPath, 'Resolution', 600);
+
+                % Export FIG
+                fprintf('Saving MATLAB figure to %s ...\n', figPath);
+                savefig(obj.figHandle, figPath);
+                fprintf('Export complete.\n');
+
+            catch ME
+                warning('Export failed: %s', ME.message);
+            end
+
+            % Restore previous view
+            xlim(ax, currentXLim);
+            obj.enable_click_zoom(true); % Re-enable if it was on
+        end
+
         function results = get_results(obj, filename,savePath)
             % Create table with numeric state and string representation
             numericState = obj.State.behavioralState;
@@ -611,7 +677,7 @@ classdef sleepscoring_gui < handle
             results.UnscoredTimes = get_state_times(0);
             results.total_duration = obj.Data.allDur_s;
             results.binwidth_sec = obj.Data.binWidth_s;
-
+            results.statecodes = obj.StateCodes;
             % Save if path provided
             save(fullfile(savePath, strcat(filename,'.mat')), '-struct', 'results');
             fprintf('Results saved to %s\n', savePath);
@@ -633,8 +699,14 @@ classdef sleepscoring_gui < handle
 
         function close_request_handler(obj, ~, ~)
             % Clean up
-            try delete(obj.GUI.cpFig); catch, end
-            try delete(obj.figHandle); catch, end
+            try delete(obj.GUI.cpFig);
+            catch
+                set(gcf, 'CloseRequestFcn', 'closereq'); close(gcf)
+            end
+            try delete(obj.figHandle);
+            catch
+                set(gcf, 'CloseRequestFcn', 'closereq'); close(gcf)
+            end
 
             fprintf('Scoring session closed.\n');
             notify(obj, 'ScoringComplete');
@@ -678,7 +750,9 @@ classdef sleepscoring_gui < handle
                 end
             end
 
-            if isempty(action), return; end
+            if isempty(action)
+                return;
+            end
 
             % Dispatch
             if isnumeric(action)
@@ -729,6 +803,9 @@ classdef sleepscoring_gui < handle
 
     methods (Static)
         function obj = loadobj(s)
+            obj = sleepscoring_gui(-1, -1);
+            obj.Data = s.Data;
+            obj.State = s.State;
 
         end
     end

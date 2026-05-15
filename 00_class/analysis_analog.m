@@ -26,6 +26,22 @@ classdef analysis_analog < handle
             total_datapoints = str2double(obj.info.analogcount);
             obj.rawdata.taxis = linspace(0,total_datapoints/obj.samplingfrequency,total_datapoints);
         end
+        function correct_pad(obj,reference_field)
+            % correct padding of data
+            target_signal = obj.rawdata.(reference_field);
+            std_signal =  movstd(target_signal,20);
+            padregion = std_signal < 0.001;
+            padedge = diff(padregion);
+            padstartloc = find(padedge,1,'last');
+            
+            fname = fieldnames(obj.rawdata);
+            for idx = 1:numel(fname)
+                obj.rawdata.(fname{idx}) = obj.rawdata.(fname{idx})(1:padstartloc);
+            end
+            
+            obj.info.padstartloc = padstartloc;
+            
+        end
 
         function get_airtable(obj, airpuff_fieldname)
             % find single air puff initiation
@@ -121,7 +137,7 @@ classdef analysis_analog < handle
             obj.emg.ds_fps = rs_power_fs;
             obj.emg.rs_taxis = rs_power_t;
             obj.rawdata.(emg_fieldname) = rescaledEMG;
-            
+
         end
 
         function get_binaryforce(obj,force_fieldname)
@@ -139,7 +155,7 @@ classdef analysis_analog < handle
             rescaledForce = rescaledForce*scale2V; % mScan scale factor
             rescaledForce = rescaledForce/obj.ampsetup.force_dagan; % undo amplification
             rescaledForce = rescaledForce/obj.tekscanForcesensor.Quickstartboard_outputVoltage; % stretch to maxrange of evaluation board
-            rescaledForce = rescaledForce*obj.tekscanForcesensor.A210sensor_newton; % 
+            rescaledForce = rescaledForce*obj.tekscanForcesensor.A210sensor_newton; %
 
             [rs_force_data, rs_force_t, rs_force_fs] = process_resample(rescaledForce, obj.samplingfrequency, 60, obj.rawdata.taxis);
             [lp_force, bin, threshold] = process_force(rs_force_data, rs_force_fs);
@@ -158,15 +174,15 @@ classdef analysis_analog < handle
                 obj
                 save_folder char
             end
-            
+
             if ~isfolder(save_folder)
                 mkdir(save_folder);
             end
-            
+
             % Save as analysis_analog.mat
             save_path = fullfile(save_folder, 'analysis_analog.mat');
             % Assign to a variable name for clarity in the MAT file
-            primary_analog = obj; 
+            primary_analog = obj;
             save(save_path, 'primary_analog');
             fprintf('analysis_analog object saved to: %s\n', save_path);
         end
@@ -177,7 +193,7 @@ classdef analysis_analog < handle
             S = obj.ecog.ecogspectrum.S;
             ECoG_base5s_awake_before = awake_array(:,1);
             ECoG_base5s_awake_after = awake_array(:,2);
-            %% 
+            %%
             idx_before = zeros(size(ECoG_base5s_awake_before));
             idx_after = zeros(size(ECoG_base5s_awake_after));
             for i = 1:size(ECoG_base5s_awake_before,1)
@@ -188,7 +204,7 @@ classdef analysis_analog < handle
                 idx_before(i) = bin_idx_pre;
                 idx_after(i) = bin_idx_post-1;
             end
-            %% 
+            %%
             baseline_S = [];
             for i = 1: size(idx_after,1)
                 baseline_S = cat(1,baseline_S, S(idx_before(i):idx_after(i),:));
@@ -196,7 +212,7 @@ classdef analysis_analog < handle
             denominator_S = mean(baseline_S,1);
             obj.ecog.ecogspectrum.awake_S = baseline_S';
             obj.ecog.ecogspectrum.baseline_S = log(S./denominator_S)';
-            
+
         end
 
 

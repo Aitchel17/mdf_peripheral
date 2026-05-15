@@ -18,6 +18,7 @@ end
 
 %% Analyze ECoG
 if isfield(primary_analog.rawdata, 'raw_ECoG')
+    primary_analog.correct_pad('raw_ECoG')
     % Call get_ecogspectrum method
     primary_analog.get_ecogspectrum('raw_ECoG'); % calculate ECoG
     %% EMG processing followed by ECoG processing
@@ -34,9 +35,5 @@ else
     fprintf('no raw_ECoG in primary_analog.data\n')
 end
 
-%%
-
-primary_analog.save_object(peripheral_session.dir_struct.peripheral)
-%%
 
 end
