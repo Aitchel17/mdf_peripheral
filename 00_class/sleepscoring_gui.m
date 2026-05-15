@@ -120,9 +120,12 @@ classdef sleepscoring_gui < handle
             obj.Axes.pupil           = copyAndPos(figStruct.pupil, 5);
             obj.Axes.spectrogram     = copyAndPos(figStruct.spectrogram, 6:8);
 
+            % Freeze Y-axis limits for all signal plots to prevent auto-scaling during panning
+            axesList = [obj.Axes.force, obj.Axes.emg_power, obj.Axes.rawemg, obj.Axes.whisker, obj.Axes.pupil];
+            set(axesList, 'YLimMode', 'manual');
+
             % Link axes (Include Spectrogram again for virtual cropping)
-            linkaxes([obj.Axes.force, obj.Axes.emg_power, obj.Axes.rawemg, ...
-                obj.Axes.whisker, obj.Axes.pupil, obj.Axes.spectrogram], 'x');
+            linkaxes([axesList, obj.Axes.spectrogram], 'x');
 
             % --- Spectrogram Virtual Cropping (Performance) ---
             % Find the graphic object (Image or Surface)
@@ -140,6 +143,9 @@ classdef sleepscoring_gui < handle
                     obj.SpecData.ZData = hSpec.ZData;
                 end
                 obj.SpecData.Handle = hSpec;
+
+                % Freeze color limits to prevent auto-scaling during panning
+                set(obj.Axes.spectrogram, 'CLimMode', 'manual');
 
                 % Setup Listener on Master Axis (Force) XLim
                 % Use 'PostSet' to update after limits change
