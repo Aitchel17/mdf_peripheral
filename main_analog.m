@@ -1,7 +1,9 @@
 %% 1. Load Data
-base_path = 'G:\tmp\00_igkl\hql088\250927_hql088_sleep\HQL088_sleep250927_009';
-peripheral_session = peripheral_mdf(base_path);
+addpath(genpath(pwd))
 
+sessiondir = 'G:\tmp\01_igkltdt\260510_hql102_sleep\HQL102_sleep260510_009';
+peripheral_session = peripheral_mdf(sessiondir);
+close all
 % 2. Run or load Analysis
 
 if exist(fullfile(peripheral_session.dir_struct.peripheral,"analysis_analog.mat"),"file") == 2
@@ -106,54 +108,22 @@ figStruct.spectrogram.reset_axis
 figStruct.spectrogram.plot_ecogspectrum(primary_analog.ecog.ecogspectrum.baseline_S,...
     primary_analog.ecog.ecogspectrum.T,primary_analog.ecog.ecogspectrum.F)
 
-%% Seconds bin to spectrogram
-target_taxis = primary_analog.ecog.ecogspectrum.T;
-
-
-%%
-session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
-sleep_score = sleepscoring_gui(session_duration);
-%%
-sleep_score.setup_figure(figStruct)
-sleep_score.setup_control_panel();
-sleep_score.goto_bin(1)
-uiwait(sleep_score.figHandle);
-sleep_result = sleep_score.get_results;
-
-%%
-
-sleep_result = sleep_score.get_results(peripheral_session.dir_struct.peripheral);
-
-%%
-sleep_score.save_session(peripheral_session.dir_struct.peripheral)
-
-%%
-save(fullfile(peripheral_session.dir_struct.peripheral,"sleep_score.mat"),"sleep_score")
-
-
-%% Save Analysis Object
-fprintf('Saving primary_analog object...\n');
-primary_analog.save_object(output_dir);
-
-
-
-
-
-%% Save Figures to Peripheral Folder
-output_dir = peripheral_session.dir_struct.peripheral;
-fields = fieldnames(figStruct);
-fprintf('Saving figures to %s...\n', output_dir);
-
-for i = 1:numel(fields)
-    fName = fields{i};
-    % Check if field is a valid peripheral_fig object
-    if ~isempty(figStruct.(fName)) && isa(figStruct.(fName), 'peripheral_fig')
-        figStruct.(fName).save_plot(output_dir);
-    end
+%% 04 Sleep analysis loading 
+if exist(fullfile(peripheral_session.dir_struct.peripheral,"sleep_gui.mat"))
+    load(fullfile(peripheral_session.dir_struct.peripheral,"sleep_gui.mat"));
+else
+    session_duration = str2double(peripheral_session.info.fcount)*str2double(peripheral_session.info.fduration(1:end-1));
+    sleep_gui = sleepscoring_gui(session_duration);
 end
-disp('All figures saved.');
-
-
+sleep_gui.setup_figure(figStruct)
+sleep_gui.setup_control_panel();
+sleep_gui.goto_bin(1)
+uiwait(sleep_gui.figHandle);
+sleep_result = sleep_gui.get_results('sleep_score',peripheral_session.dir_struct.peripheral);
+save(fullfile(peripheral_session.dir_struct.peripheral,'sleep_gui.mat'),'sleep_gui')
+sleep_gui.setup_figure(figStruct);
+sleep_gui.save_figure('sleep_score_result',peripheral_session.dir_struct.peripheral)
+close(sleep_gui.figHandle);
 %%
 figStruct.spectrogram.fig.Visible = 'off';
 figStruct.force.fig.Visible = 'off';

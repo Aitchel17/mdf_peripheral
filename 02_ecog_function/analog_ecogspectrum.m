@@ -1,11 +1,15 @@
 function [ecog_spectrum] = analog_ecogspectrum(samplingfreq,ECoG)
 % ECoG processing
-    detrended_ECoG = detrend(ECoG,'constant');
-    ecog_spectrum.params.tapers = [5,9];
+    ECoG = ECoG+min(ECoG,[],"all");
+    detrended_ECoG = detrend(ECoG);
+    %ecog_spectrum.params.tapers = [5,9];
+    ecog_spectrum.params.tapers = [3,5];
+
     ecog_spectrum.params.Fs = samplingfreq;
     ecog_spectrum.params.fpass = [1,100];
-    ecog_spectrum.movingwin = [5,1/5];
-    [S5,T5,F5] = mtspecgramc(detrended_ECoG,ecog_spectrum.movingwin,ecog_spectrum.params);
+    ecog_spectrum.movingwin = [2,1/2];
+    % ecog_spectrum.movingwin = [5,1/5];
+    [S5,T5,F5] = mtspecgramc(detrended_ECoG, ecog_spectrum.movingwin, ecog_spectrum.params);
     % Output:
     %       S       (spectrum in form time x frequency x channels/trials if trialave=0; 
     %               in the form time x frequency if trialave=1)
@@ -14,6 +18,7 @@ function [ecog_spectrum] = analog_ecogspectrum(samplingfreq,ECoG)
     %       Serr    (error bars) only for err(1)>=1
     
     normS5 = (S5-min(S5,[],'all'))./(max(S5,[],'all')-min(S5,[],'all'));
+
     % output
     ecog_spectrum.log_norm_spectrum = log(normS5)';
     ecog_spectrum.T = T5;
